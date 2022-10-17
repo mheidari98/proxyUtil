@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+import argparse
+from modules.myUtil import *
+
+
+def main():
+    parser = argparse.ArgumentParser(description="ss-local command to shadowsocks URI")
+    parser.add_argument("-i", "--input", help="ss-local command")
+    parser.add_argument("-f", "--file", help="file contain ss-local commands")
+    parser.add_argument("-o", "--output", help="shadowsocks URI(s) output file")
+    args = parser.parse_args()
+    
+    results = []
+    
+    if args.input :
+        results.append( sslocal2ssURI(args.input) )
+    
+    if args.file :
+        with open(args.file, 'r') as file:
+            for line in file:
+                if "ss-local" in line :
+                    results.append( sslocal2ssURI(line.rstrip()) )
+    
+    outputs = '\n'.join(results) 
+    if args.output :
+        with open(args.output, 'w') as f :
+            f.write(outputs)
+    else :
+        print(outputs)
+
+
+if __name__ == '__main__':
+    main()
