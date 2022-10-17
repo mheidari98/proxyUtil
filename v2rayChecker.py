@@ -71,6 +71,7 @@ def main():
     parser.add_argument("-l", "--lport", help="start local port, default is 1080", default=1080, type=int)
     parser.add_argument('-v', '--verbose', help="verbose log", action='store_true', default=False)
     parser.add_argument('-T', '--threads', help="threads number, default is 10", default=10, type=int)
+    parser.add_argument('--url', help="get proxy from url")
     args = parser.parse_args()
     
     if args.verbose:
@@ -87,6 +88,9 @@ def main():
             lines = checkPatternsInList(file.readlines(), [vmess_scheme, ss_scheme])
             logging.info(f"got {len(lines)} from reading proxy from file")
 
+    if args.url :
+        lines += ScrapURL(args.url, [vmess_scheme, ss_scheme])
+    
     logging.info(f"We have {len(lines)} proxy to check")
     
     if not lines:
