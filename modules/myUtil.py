@@ -162,16 +162,17 @@ def is_json(myjson):
 def isBase64(sb):
     # https://stackoverflow.com/questions/12315398
     try:
-            if isinstance(sb, str):
-                    # If there's any unicode here, an exception will be thrown and the function will return false
-                    sb_bytes = bytes(sb, 'ascii')
-            elif isinstance(sb, bytes):
-                    sb_bytes = sb
-            else:
-                    raise ValueError("Argument must be string or bytes")
-            return base64.b64encode(base64.b64decode(sb_bytes)) == sb_bytes
+        if isinstance(sb, str):
+            # If there's any unicode here, an exception will be thrown and the function will return false
+            sb_bytes = bytes(sb, 'ascii')
+        elif isinstance(sb, bytes):
+            sb_bytes = sb
+        else:
+            raise ValueError("Argument must be string or bytes")
+        sb_bytes = sb_bytes + b'=' * (-len(sb_bytes) % 4)
+        return base64.b64encode(base64.b64decode(sb_bytes)) == sb_bytes
     except Exception:
-            return False
+        return False
 
 
 def base64Decode(decodedStr) :
