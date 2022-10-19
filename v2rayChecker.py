@@ -88,7 +88,7 @@ def main():
     lines = []
     if args.file:
         with open(args.file, 'r', encoding='UTF-8') as file:
-            lines = checkPatternsInList(file.readlines(), [vmess_scheme, vless_scheme, ss_scheme])
+            lines = parseContent(file.read().strip(), [vmess_scheme, vless_scheme, ss_scheme])
             logging.info(f"got {len(lines)} from reading proxy from file")
 
     if args.url :

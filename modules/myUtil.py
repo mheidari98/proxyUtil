@@ -258,6 +258,19 @@ def processShadowJson(jsonTxt):
     return result
 
 
+def parseContent(content, patterns=proxyScheme):
+    newProxy = []
+    if is_json(content):
+        newProxy = processShadowJson(content)
+    else: 
+        if isBase64(content):
+            lines = base64Decode(content).splitlines()
+        else :
+            lines = content.splitlines()
+        newProxy = checkPatternsInList(lines, patterns)
+    return newProxy
+
+
 def ScrapURL(url, patterns=proxyScheme):
     newProxy = []
     try:
@@ -268,14 +281,7 @@ def ScrapURL(url, patterns=proxyScheme):
         return newProxy
     
     if (res.status_code//100) == 2:
-        if is_json(res.text):
-            newProxy = processShadowJson(res.text)
-        else: 
-            if isBase64(res.text.strip()):
-                lines = base64Decode(res.text).splitlines()
-            else :
-                lines = res.text.splitlines()
-            newProxy = checkPatternsInList(lines, patterns)
+        newProxy = parseContent(res.text.strip(), patterns)
         logging.info(f"Got {len(newProxy)} new proxy from {url}.")
     else:
         logging.error(f"Can't get {url}. status code = {res.status_code}")

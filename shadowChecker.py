@@ -72,7 +72,7 @@ def main():
     lines = []
     if args.file:
         with open(args.file, 'r', encoding='UTF-8') as file:
-            lines = checkPatternsInList(file.readlines(), [ss_scheme])
+            lines = parseContent(file.read().strip(), [ss_scheme])
             logging.info(f"got {len(lines)} from reading proxy from file")
 
     if args.url :
