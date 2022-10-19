@@ -20,17 +20,20 @@ def Checker(proxyList, localPort, testDomain, timeOut):
 
     for url in proxyList :
         ParseResult = urllib.parse.urlparse(url)  # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
-        if ParseResult.scheme in {'vless', 'trojan'} :
-            logging.info(f"vless/trojan proxy is not supported yet :(")
-        elif ParseResult.scheme == "ss" :
+        if ParseResult.scheme == "ss" :
             config = createShadowConfig(url, port=localPort)
         elif ParseResult.scheme == "vmess" :
-            if isBase64(ParseResult.netloc):
-                jsonLoad = json.loads(base64Decode(ParseResult.netloc))
+            if isBase64(url[8:]):
+                jsonLoad = json.loads(base64Decode(url[8:]))
+                jsonLoad["protocol"] = "vmess"
                 config = createVmessConfig(jsonLoad, port=localPort)
             else :
                 logging.warning("Not Implemented")
                 continue
+        elif ParseResult.scheme == "vless" :
+            config = createVmessConfig(parseVless(ParseResult), port=localPort)
+        elif ParseResult.scheme == "trojan" :
+            logging.info(f"trojan proxy is not supported yet :(")
         else :
             logging.warning(f"Not Implemented {ParseResult.scheme}")
             continue
@@ -85,11 +88,11 @@ def main():
     lines = []
     if args.file:
         with open(args.file, 'r', encoding='UTF-8') as file:
-            lines = checkPatternsInList(file.readlines(), [vmess_scheme, ss_scheme])
+            lines = checkPatternsInList(file.readlines(), [vmess_scheme, vless_scheme, ss_scheme])
             logging.info(f"got {len(lines)} from reading proxy from file")
 
     if args.url :
-        lines += ScrapURL(args.url, [vmess_scheme, ss_scheme])
+        lines += ScrapURL(args.url, [vmess_scheme, vless_scheme, ss_scheme])
     
     logging.info(f"We have {len(lines)} proxy to check")
     

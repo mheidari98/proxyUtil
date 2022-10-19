@@ -292,7 +292,7 @@ def createVmessConfig(jsonLoad, port=1080):
 
     config['inbounds'][0]['port'] = port
 
-    config['outbounds'][0]["protocol"] = "vmess"
+    config['outbounds'][0]["protocol"] = jsonLoad["protocol"]  # vmess/vless
     config['outbounds'][0]["settings"]["vnext"][0]["address"]  = jsonLoad['add']
     config['outbounds'][0]["settings"]["vnext"][0]["port"]  = int(jsonLoad['port'])
     config['outbounds'][0]["settings"]["vnext"][0]["users"][0]["id"] = jsonLoad['id']
@@ -348,3 +348,22 @@ def createShadowConfig(ss_url, port=1080):
     config['outbounds'][0]['settings']['servers'][0]['password'] = password
 
     return config    
+
+
+def parseVless(loaded):
+    uid, address, port = re.search(f"^(.+)@(.+):(\d+)$", loaded.netloc).groups()
+    if address[0] == '[':
+        address = address[1:-1]
+    queryDict = dict(parse_qsl(loaded.query))
+    
+    notNone = lambda x: x if x!='none' else ''
+
+    queryDict["protocol"] = loaded.scheme
+    queryDict["add"] = address
+    queryDict["port"] = port
+    queryDict["id"] = uid
+    queryDict["net"] = notNone(queryDict.pop("type") if 'type' in queryDict else '')
+    queryDict["tls"] = notNone(queryDict.pop("security") if 'security' in queryDict else '')
+    
+    return json.loads(json.dumps(queryDict)) 
+
