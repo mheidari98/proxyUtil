@@ -203,7 +203,7 @@ def parse_ss(ss_url) :
         decoded = mainPart[:mainPart.find('@')]
         mainPart = mainPart.replace(decoded, base64Decode(decoded), 1)
     
-    method, password , server, server_port = re.search("^(.+):(.+)@(.+):(\d+)", unquote(mainPart)).groups()
+    method, password , server, server_port = re.search("^(.+?):(.+)@(.+):(\d+)", unquote(mainPart)).groups()
     logging.debug(f"{server}:{server_port} {method} {password} {plugin}")
     return server, server_port, method, password
 
