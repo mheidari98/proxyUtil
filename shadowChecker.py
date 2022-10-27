@@ -19,12 +19,17 @@ def Checker(shadowList, localPort, testDomain, timeOut):
     proxy['http'] = proxy['http'].format(LOCAL_PORT=localPort)
     proxy['https'] = proxy['https'].format(LOCAL_PORT=localPort)
     
+    pidPath = f"{tempdir}/ss.pid.{localPort}"
+    
     for ss_url in shadowList :
         server, server_port, method, password = parse_ss(ss_url)
 
+        if not isValidIP(server) and not getIP(server):
+            continue
+
         #writeConfig2json(server, server_port, method, password, local_port=1080, configFile='{tempdir}/CONFIG.json.{localPort}')
-        #cmd = f"ss-local -c {tempdir}/CONFIG.json.{localPort} -f {tempdir}/ss.pid.{localPort}"
-        cmd = f"ss-local -s {server} -p {server_port} -l {localPort} -m {method} -k '{password}' -f {tempdir}/ss.pid.{localPort}"
+        #cmd = f"ss-local -c {tempdir}/CONFIG.json.{localPort} -f {pidPath}"
+        cmd = f"ss-local -s {server} -p {server_port} -l {localPort} -m {method} -k '{password}' -f {pidPath}"
         os.system(cmd)
         time.sleep(0.2) 
 
@@ -41,7 +46,7 @@ def Checker(shadowList, localPort, testDomain, timeOut):
         else :
             logging.info(f"[dead] ip={server}")
 
-        os.system(f"kill -9 $(cat {tempdir}/ss.pid.{localPort})")
+        os.system(f"if ps -p $(cat {pidPath}) > /dev/null 2>&1 ;then kill -9 $(cat {pidPath}); fi")
         time.sleep(0.3)    # sleep 0.3 seconds
 
     return liveProxy

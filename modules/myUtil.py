@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import time
 import urllib
@@ -157,6 +158,23 @@ def is_json(myjson):
     except ValueError as e:
         return False
     return True
+
+
+def isValidIP(addr):
+    try:
+        #ipaddress.ip_address(addr)
+        socket.inet_aton(addr) 
+    except :
+        return False # Not legal
+    return True # legal
+
+
+def getIP(domain):
+    try:
+        ip = socket.gethostbyname(domain)
+        return ip
+    except Exception:
+        return False
 
 
 def isBase64(sb):
