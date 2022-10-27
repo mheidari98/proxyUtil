@@ -28,7 +28,7 @@ def Checker(proxyList, localPort, testDomain, timeOut):
                 jsonLoad["protocol"] = "vmess"
                 config = createVmessConfig(jsonLoad, port=localPort)
             else :
-                logging.warning("Not Implemented")
+                logging.warning("Not Implemented this type of vmess url")
                 continue
         elif ParseResult.scheme == "vless" :
             config = createVmessConfig(parseVless(ParseResult), port=localPort)

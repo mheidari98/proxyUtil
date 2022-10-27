@@ -11,6 +11,7 @@ import socket
 import subprocess
 import time
 import urllib
+import uuid
 from copy import deepcopy
 from urllib.parse import (parse_qs, parse_qsl, unquote, urljoin, urlparse,
                           urlsplit)
@@ -202,6 +203,19 @@ def base64Decode(decodedStr) :
     return base64.b64decode(decodedStr + '=' * (-len(decodedStr) % 4)).decode('utf-8')
 
 
+def is_valid_uuid(val):
+    try:
+        uuid.UUID(val)
+    except ValueError:
+        return False
+    return True
+
+
+def generate_uuid(basedata):
+    UUID_NAMESPACE = uuid.UUID('00000000-0000-0000-0000-000000000000')
+    return str(uuid.uuid5(UUID_NAMESPACE, basedata))
+
+
 def Create_ss_url(server, server_port, method, password):
     return f"ss://{base64.urlsafe_b64encode((method+':'+password).encode()).decode('utf-8')}@{server}:{server_port}"
 
@@ -319,12 +333,15 @@ def createVmessConfig(jsonLoad, port=1080):
 
     config['inbounds'][0]['port'] = port
 
-    config['outbounds'][0]["protocol"] = jsonLoad["protocol"]  # vmess/vless
+    config['outbounds'][0]["protocol"] = jsonLoad["protocol"] if 'protocol' in jsonLoad else "vmess" # vmess/vless
     config['outbounds'][0]["settings"]["vnext"][0]["address"]  = jsonLoad['add']
     config['outbounds'][0]["settings"]["vnext"][0]["port"]  = int(jsonLoad['port'])
-    config['outbounds'][0]["settings"]["vnext"][0]["users"][0]["id"] = jsonLoad['id']
 
-    
+    if is_valid_uuid(jsonLoad['id']) :
+        config['outbounds'][0]["settings"]["vnext"][0]["users"][0]["id"] = jsonLoad['id']
+    else:
+        config['outbounds'][0]["settings"]["vnext"][0]["users"][0]["id"] =  generate_uuid(jsonLoad['id'])
+
     if 'aid' in jsonLoad and jsonLoad['aid']:
         try:
             config['outbounds'][0]["settings"]["vnext"][0]["users"][0]["alterId"] = int(jsonLoad['aid'])
