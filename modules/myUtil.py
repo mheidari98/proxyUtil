@@ -188,16 +188,18 @@ def isBase64(sb):
         else:
             raise ValueError("Argument must be string or bytes")
         sb_bytes = sb_bytes + b'=' * (-len(sb_bytes) % 4)
-        return base64.b64encode(base64.b64decode(sb_bytes)) == sb_bytes
+        if b"-" in sb_bytes or b"_" in sb_bytes:
+            return base64.urlsafe_b64encode(base64.urlsafe_b64decode(sb_bytes)) == sb_bytes
+        return base64.b64encode(base64.b64decode(sb_bytes).decode().encode()) == sb_bytes
     except Exception:
         return False
 
 
 def base64Decode(decodedStr) :
-    try :
-        return base64.b64decode(decodedStr + '=' * (-len(decodedStr) % 4)).decode('utf-8')
-    except:
-        return base64.b64decode(decodedStr.replace("-", "+") + '=' * (-len(decodedStr) % 4)).decode('utf-8')
+    if "-" in decodedStr or "_" in decodedStr:
+         # URL safe : The alphabet uses '-' instead of '+' and '_' instead of '/'.
+        return base64.urlsafe_b64decode(decodedStr + "===").decode('utf-8')
+    return base64.b64decode(decodedStr + '=' * (-len(decodedStr) % 4)).decode('utf-8')
 
 
 def Create_ss_url(server, server_port, method, password):
