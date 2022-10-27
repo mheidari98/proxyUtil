@@ -75,6 +75,7 @@ def main():
     parser.add_argument('-v', '--verbose', help="verbose log", action='store_true', default=False)
     parser.add_argument('-T', '--threads', help="threads number, default is 10", default=10, type=int)
     parser.add_argument('--url', help="get proxy from url")
+    parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
     args = parser.parse_args()
     
     if args.verbose:
@@ -93,6 +94,9 @@ def main():
 
     if args.url :
         lines += ScrapURL(args.url, [vmess_scheme, vless_scheme, ss_scheme])
+
+    if args.free :
+        lines += ScrapURL('https://raw.githubusercontent.com/freefq/free/master/v2', [vmess_scheme, vless_scheme, ss_scheme])
     
     logging.info(f"We have {len(lines)} proxy to check")
     
