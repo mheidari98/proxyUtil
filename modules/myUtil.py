@@ -358,9 +358,10 @@ def createVmessConfig(jsonLoad, port=1080):
 
     if jsonLoad["net"]=="ws": 
         config['outbounds'][0]["streamSettings"]["network"] = "ws"
-        config['outbounds'][0]["streamSettings"]["wsSettings"] = {"headers":{"Host":jsonLoad['host']} ,
-                                                                  "connectionReuse": True,
-                                                                  "path":jsonLoad['path']}
+        if 'host' in jsonLoad :
+            config['outbounds'][0]["streamSettings"]["wsSettings"] = {"headers":{"Host":jsonLoad['host']} ,
+                                                                      "connectionReuse": True,
+                                                                      "path":jsonLoad['path']}
     elif jsonLoad["net"]=="h2": 
         config['outbounds'][0]["streamSettings"]["network"] = "http"
         config['outbounds'][0]["streamSettings"]["httpSettings"] = {"headers":{"Host":jsonLoad['host']} , 
