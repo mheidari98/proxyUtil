@@ -272,10 +272,9 @@ def is_port_in_use(port: int) -> bool:
 def is_alive(testDomain, proxy, timeOut=3):  
     try:
         start = time.perf_counter()
-        requests.get(   testDomain, 
+        requests.head(  testDomain, 
                         proxies = proxy, 
                         timeout = timeOut, 
-                        #retries=Retry(10, backoff_factor=0.1)
                         )
         end = time.perf_counter()
     except Exception as e:
