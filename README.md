@@ -10,22 +10,29 @@ some proxy tools
 - [v2ray](https://www.v2fly.org/en_US/guide/install.html)
 
 ## Usage
-  for check shadowsocks proxy in server.txt with 50 thread:
+  fast checkout live proxy:
   ```bash
-  ./shadowChecker.py --domain https://www.google.com --timeout 3 --lport 1080 -T 50 server.txt
+  ./v2rayChecker.py -T 50 -f servers.txt
   ```
-  for check vmess proxy in server.txt:
+  for check shadowsocks proxy in shadowServer.txt with 50 thread and 3sec timeout with specific domain:
   ```bash
-  ./v2rayChecker.py --domain https://www.google.com --timeout 3 --lport 1080 server.txt
+  ./shadowChecker.py --domain https://www.google.com --timeout 3  -T 50 -f shadowServer.txt
   ```
-
+  for check proxy from specific url:
+  ```bash
+  ./v2rayChecker.py --url 'https://www.site.xyz/servers.txt'
+  ```
+  get and check some free proxy:
+  ```bash
+  ./v2rayChecker.py --free
+  ```
 ---
 
 ## Task-Lists
 - [x] support shadowsocks protocol
 - [x] support vmess protocol
-- [ ] support vless protocol
-- [ ] support trojan protocol
+- [x] support vless protocol
+- [x] support trojan protocol
 - [ ] add more free server proxy
 - [x] threading support
 - [ ] complete Document
@@ -41,4 +48,6 @@ some proxy tools
   proxychains bash
   ```
 * [vmess to json](https://github.com/boypt/vmess2json/wiki/vmess2json)
+* [Some examples of uses for V2ray-core](https://github.com/v2fly/v2ray-examples)
+* [Some examples of uses for Xray-core](https://github.com/XTLS/Xray-examples)
 * [Get Internal and External IP Address](https://gist.github.com/mheidari98/8801d3afcea3c7a27393abc2bdbec17d)
