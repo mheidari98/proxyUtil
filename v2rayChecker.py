@@ -20,22 +20,26 @@ def Checker(proxyList, localPort, testDomain, timeOut):
 
     for url in proxyList :
         ParseResult = urllib.parse.urlparse(url)  # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
-        if ParseResult.scheme == "ss" :
-            config = createShadowConfig(url, port=localPort)
-        elif ParseResult.scheme == "vmess" :
-            if isBase64(url[8:]):
-                jsonLoad = json.loads(base64Decode(url[8:]))
-                jsonLoad["protocol"] = "vmess"
-                config = createVmessConfig(jsonLoad, port=localPort)
+        try:
+            if ParseResult.scheme == "ss" :
+                config = createShadowConfig(url, port=localPort)
+            elif ParseResult.scheme == "vmess" :
+                if isBase64(url[8:]):
+                    jsonLoad = json.loads(base64Decode(url[8:]))
+                    jsonLoad["protocol"] = "vmess"
+                    config = createVmessConfig(jsonLoad, port=localPort)
+                else :
+                    logging.warning("Not Implemented this type of vmess url")
+                    continue
+            elif ParseResult.scheme == "vless" :
+                config = createVmessConfig(parseVless(ParseResult), port=localPort)
+            elif ParseResult.scheme == "trojan" :
+                config = createTrojanConfig(ParseResult, localPort=localPort)
             else :
-                logging.warning("Not Implemented this type of vmess url")
+                logging.warning(f"Not Implemented {ParseResult.scheme}")
                 continue
-        elif ParseResult.scheme == "vless" :
-            config = createVmessConfig(parseVless(ParseResult), port=localPort)
-        elif ParseResult.scheme == "trojan" :
-            logging.info(f"trojan proxy is not supported yet :(")
-        else :
-            logging.warning(f"Not Implemented {ParseResult.scheme}")
+        except Exception as err :
+            logging.error(err)
             continue
 
         configName = f"{tempdir}/config_{localPort}.json"
@@ -89,14 +93,14 @@ def main():
     lines = []
     if args.file:
         with open(args.file, 'r', encoding='UTF-8') as file:
-            lines = parseContent(file.read().strip(), [vmess_scheme, vless_scheme, ss_scheme])
+            lines = parseContent(file.read().strip())
             logging.info(f"got {len(lines)} from reading proxy from file")
 
     if args.url :
-        lines += ScrapURL(args.url, [vmess_scheme, vless_scheme, ss_scheme])
+        lines += ScrapURL(args.url)
 
     if args.free :
-        lines += ScrapURL('https://raw.githubusercontent.com/freefq/free/master/v2', [vmess_scheme, vless_scheme, ss_scheme])
+        lines += ScrapURL('https://raw.githubusercontent.com/freefq/free/master/v2')
     
     logging.info(f"We have {len(lines)} proxy to check")
     

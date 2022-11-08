@@ -13,9 +13,8 @@ import time
 import urllib
 import uuid
 from copy import deepcopy
-from urllib.parse import (parse_qs, parse_qsl, unquote, urljoin, urlparse,
-                          urlsplit)
-
+from urllib.parse import (parse_qs, parse_qsl, unquote, urldefrag, urljoin,
+                          urlparse, urlsplit)
 import numpy as np
 import psutil
 import requests
@@ -131,6 +130,36 @@ vmessOut = {
             "mux": {
                 "enabled": True,
                 "concurrency": 8
+            }
+        }
+    ]
+}
+
+trojanOut = {
+    "outbounds": [
+        {
+            "protocol": "trojan",
+            "settings": {
+                "servers": [
+                    {
+                        "address": "serveraddr.com",
+                        "port": 1234,
+                        "password": "myP@5s",
+                    }
+                ],
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "tls",
+                "tcpSettings": {
+                    "header": {
+                        "type": "none"
+                    }
+                },
+                "tlsSettings": {
+                    "allowInsecure": False,
+                    "serverName": ""
+                }
             }
         }
     ]
@@ -277,6 +306,33 @@ def parse_ssr(ssr_url) :
     return ssr_parsed
 
 
+def parseVless(loaded):
+    uid, address, port = re.search(f"^(.+)@(.+):(\d+)$", loaded.netloc).groups()
+    if address[0] == '[':
+        address = address[1:-1]
+    queryDict = dict(parse_qsl(loaded.query))
+    
+    notNone = lambda x: x if x!='none' else ''
+
+    queryDict["protocol"] = loaded.scheme
+    queryDict["add"] = address
+    queryDict["port"] = port
+    queryDict["id"] = uid
+    queryDict["net"] = notNone(queryDict.pop("type") if 'type' in queryDict else '')
+    queryDict["tls"] = notNone(queryDict.pop("security") if 'security' in queryDict else '')
+    
+    return json.loads(json.dumps(queryDict))
+
+
+def parseTrojan(loaded):
+    queryDict = dict(parse_qsl(loaded.query))
+    if (res := re.search(f"^(.+)@(.+):(\d+)$", loaded.netloc)):
+        queryDict['password'], queryDict['address'], queryDict['port'] = res.groups()
+    else:
+        raise Exception("Wrong Trojan URI") 
+    return queryDict
+
+
 def killProcess(processName, cmdline=None):
     for p in psutil.process_iter(attrs=['pid', 'name']):
         if processName in p.name() and (cmdline is None or cmdline in p.cmdline()):
@@ -362,6 +418,36 @@ def split2Npart(a, n):
     return (a[i*k+min(i, m):(i+1)*k+min(i+1, m)] for i in range(n))
 
 
+def createShadowConfig(ss_url, port=1080):
+    config = deepcopy(dns|inbounds|ssOut)
+    
+    config['inbounds'][0]['port'] = port
+    
+    server, server_port, method, password = parse_ss(ss_url)
+    
+    config['outbounds'][0]['settings']['servers'][0]['address']  = server
+    config['outbounds'][0]['settings']['servers'][0]['port']     = int(server_port)
+    config['outbounds'][0]['settings']['servers'][0]['method']   = method
+    config['outbounds'][0]['settings']['servers'][0]['password'] = password
+
+    return config
+
+
+def createSsrConfig(ssr_url, localPort=1080):
+    config = deepcopy(dns|inbounds|ssrOut)
+    ssr_parsed = parse_ssr(ssr_url)
+    config['inbounds'][0]['port'] = localPort
+    config['outbounds'][0]['settings']['servers'][0]['address']  = ssr_parsed['address']
+    config['outbounds'][0]['settings']['servers'][0]['port']     = int(ssr_parsed['port'])
+    config['outbounds'][0]['settings']['servers'][0]['method']   = ssr_parsed['method']
+    config['outbounds'][0]['settings']['servers'][0]['password'] = ssr_parsed['password']
+    config['outbounds'][0]['settings']["pluginArgs"].append(f'--obfs={ssr_parsed["obfs"]}')
+    config['outbounds'][0]['settings']["pluginArgs"].append(f'--obfs-param={ssr_parsed["obfsparam"]}')
+    config['outbounds'][0]['settings']["pluginArgs"].append(f'--protocol={ssr_parsed["protocol"]}')
+    config['outbounds'][0]['settings']["pluginArgs"].append(f'--protocol-param={ssr_parsed["protoparam"]}')
+    return config
+
+
 def createVmessConfig(jsonLoad, port=1080):
     config = deepcopy(dns|inbounds|vmessOut)
 
@@ -414,49 +500,25 @@ def createVmessConfig(jsonLoad, port=1080):
     return config
 
 
-def createShadowConfig(ss_url, port=1080):
-    config = deepcopy(dns|inbounds|ssOut)
+def createTrojanConfig(loaded, localPort=1080):
+    config = deepcopy(dns|inbounds|trojanOut)
     
-    config['inbounds'][0]['port'] = port
+    trojan_parsed = parseTrojan(loaded)
     
-    server, server_port, method, password = parse_ss(ss_url)
-    
-    config['outbounds'][0]['settings']['servers'][0]['address']  = server
-    config['outbounds'][0]['settings']['servers'][0]['port']     = int(server_port)
-    config['outbounds'][0]['settings']['servers'][0]['method']   = method
-    config['outbounds'][0]['settings']['servers'][0]['password'] = password
-
-    return config    
-
-
-def createSsrConfig(ssr_parsed, localPort=1080):
-    config = deepcopy(dns|inbounds|ssrOut)
     config['inbounds'][0]['port'] = localPort
-    config['outbounds'][0]['settings']['servers'][0]['address']  = ssr_parsed['address']
-    config['outbounds'][0]['settings']['servers'][0]['port']     = int(ssr_parsed['port'])
-    config['outbounds'][0]['settings']['servers'][0]['method']   = ssr_parsed['method']
-    config['outbounds'][0]['settings']['servers'][0]['password'] = ssr_parsed['password']
-    config['outbounds'][0]['settings']["pluginArgs"].append(f'--obfs={ssr_parsed["obfs"]}')
-    config['outbounds'][0]['settings']["pluginArgs"].append(f'--obfs-param={ssr_parsed["obfsparam"]}')
-    config['outbounds'][0]['settings']["pluginArgs"].append(f'--protocol={ssr_parsed["protocol"]}')
-    config['outbounds'][0]['settings']["pluginArgs"].append(f'--protocol-param={ssr_parsed["protoparam"]}')
+    
+    config['outbounds'][0]['settings']['servers'][0]['address']  = trojan_parsed['address']
+    config['outbounds'][0]['settings']['servers'][0]['port']     = int(trojan_parsed['port'])
+    config['outbounds'][0]['settings']['servers'][0]['password'] = trojan_parsed['password']
+ 
+    if 'network' in trojan_parsed :
+        config['outbounds'][0]['streamSettings']["network"] = trojan_parsed['network']
+    if 'security' in trojan_parsed :
+        config['outbounds'][0]['streamSettings']["security"] = trojan_parsed['security']
+    if 'sni' in trojan_parsed :
+        config['outbounds'][0]['streamSettings']['tlsSettings']["serverName"] = trojan_parsed['sni']
+    if 'allowInsecure' in trojan_parsed and trojan_parsed['allowInsecure']=='1':
+        config['outbounds'][0]['streamSettings']['tlsSettings']["allowInsecure"] = True
+        
     return config
-
-
-def parseVless(loaded):
-    uid, address, port = re.search(f"^(.+)@(.+):(\d+)$", loaded.netloc).groups()
-    if address[0] == '[':
-        address = address[1:-1]
-    queryDict = dict(parse_qsl(loaded.query))
-    
-    notNone = lambda x: x if x!='none' else ''
-
-    queryDict["protocol"] = loaded.scheme
-    queryDict["add"] = address
-    queryDict["port"] = port
-    queryDict["id"] = uid
-    queryDict["net"] = notNone(queryDict.pop("type") if 'type' in queryDict else '')
-    queryDict["tls"] = notNone(queryDict.pop("security") if 'security' in queryDict else '')
-    
-    return json.loads(json.dumps(queryDict)) 
 
