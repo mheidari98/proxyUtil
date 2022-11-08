@@ -19,7 +19,9 @@ from urllib.parse import (parse_qs, parse_qsl, unquote, urljoin, urlparse,
 import numpy as np
 import psutil
 import requests
-from urllib3.util.retry import Retry
+import urllib3
+
+logging.getLogger("urllib3").setLevel(logging.ERROR)
 
 PROXIES={
     'http': 'socks5h://127.0.0.1:{LOCAL_PORT}',
@@ -72,6 +74,27 @@ ssOut = {
                         "method": "aes-128-gcm", # Encryption method of Shadowsocks 
                         "ota": False, # Whether enable OTA, default is false, we don't recommand enable this as decrepted by Shadowsocks
                         "password": "sspasswd", # Password of Shadowsocks 
+                        "port": 1024
+                    }
+                ]
+            }
+        }
+    ]
+}
+
+ssrOut = {
+    "outbounds": [
+        {
+            "protocol": "shadowsocks",
+            "settings": {
+                "plugin": "shadowsocksr",
+                "pluginArgs": [
+                ],
+                "servers": [
+                    {
+                        "address": "serveraddr.com",
+                        "method": "aes-256-cfb",
+                        "password": "sspasswd",
                         "port": 1024
                     }
                 ]
@@ -242,6 +265,18 @@ def parse_ss(ss_url) :
     return server, server_port, method, password
 
 
+def parse_ssr(ssr_url) :
+    ssr_parsed = {}
+    ssr_parsed['address'], ssr_parsed['port'], ssr_parsed['protocol'], ssr_parsed['method'], ssr_parsed['obfs'], etc = base64Decode(ssr_url[6:]).split(':')
+    password, pluginArgs = etc.rsplit('/?')
+    ssr_parsed['password'] = base64Decode(password)
+    ssr_parsed['obfsparam']  = base64Decode(parse_qs(pluginArgs).get('obfsparam',[''])[0])
+    ssr_parsed['protoparam'] = base64Decode(parse_qs(pluginArgs).get('protoparam',[''])[0])
+    ssr_parsed['remarks'] = base64Decode(parse_qs(pluginArgs).get('remarks',[''])[0])
+    ssr_parsed['group'] = base64Decode(parse_qs(pluginArgs).get('group',[''])[0])
+    return ssr_parsed
+
+
 def killProcess(processName, cmdline=None):
     for p in psutil.process_iter(attrs=['pid', 'name']):
         if processName in p.name() and (cmdline is None or cmdline in p.cmdline()):
@@ -392,6 +427,20 @@ def createShadowConfig(ss_url, port=1080):
     config['outbounds'][0]['settings']['servers'][0]['password'] = password
 
     return config    
+
+
+def createSsrConfig(ssr_parsed, localPort=1080):
+    config = deepcopy(dns|inbounds|ssrOut)
+    config['inbounds'][0]['port'] = localPort
+    config['outbounds'][0]['settings']['servers'][0]['address']  = ssr_parsed['address']
+    config['outbounds'][0]['settings']['servers'][0]['port']     = int(ssr_parsed['port'])
+    config['outbounds'][0]['settings']['servers'][0]['method']   = ssr_parsed['method']
+    config['outbounds'][0]['settings']['servers'][0]['password'] = ssr_parsed['password']
+    config['outbounds'][0]['settings']["pluginArgs"].append(f'--obfs={ssr_parsed["obfs"]}')
+    config['outbounds'][0]['settings']["pluginArgs"].append(f'--obfs-param={ssr_parsed["obfsparam"]}')
+    config['outbounds'][0]['settings']["pluginArgs"].append(f'--protocol={ssr_parsed["protocol"]}')
+    config['outbounds'][0]['settings']["pluginArgs"].append(f'--protocol-param={ssr_parsed["protoparam"]}')
+    return config
 
 
 def parseVless(loaded):
