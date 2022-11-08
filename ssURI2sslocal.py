@@ -20,11 +20,11 @@ def main():
     
     if args.file :
         with open(args.file, 'r') as file:
-            for line in file:
-                if "ss://" in line :
-                    server, server_port, method, password = parse_ss(line.rstrip())
-                    cmd = f"ss-local -s {server} -p {server_port} -l {args.lport} -m {method} -k {password} -f ./ss.pid"
-                    results.append( cmd )
+            lines = parseContent(file.read().strip(), [ss_scheme])
+            for line in lines:
+                server, server_port, method, password = parse_ss(line.rstrip())
+                cmd = f"ss-local -s {server} -p {server_port} -l {args.lport} -m {method} -k {password} -f ./ss.pid"
+                results.append( cmd )
     
     outputs = '\n'.join(results) 
     if args.output :
