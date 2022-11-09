@@ -9,11 +9,12 @@ from modules.myUtil import *
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+CORE = "v2ray"
 tempdir = tempfile.mkdtemp()
 
 def Checker(proxyList, localPort, testDomain, timeOut):
     liveProxy = []
-    
+
     proxy = PROXIES.copy()  #deepcopy(PROXIES) 
     proxy['http'] = proxy['http'].format(LOCAL_PORT=localPort)
     proxy['https'] = proxy['https'].format(LOCAL_PORT=localPort)
@@ -47,7 +48,7 @@ def Checker(proxyList, localPort, testDomain, timeOut):
             json.dump(config, f)
         logging.debug(f"config file {configName} created.")
 
-        proc = subprocess.Popen(f"v2ray run -config {configName}", stdout=subprocess.PIPE, 
+        proc = subprocess.Popen(f"{CORE} run -config {configName}", stdout=subprocess.PIPE, 
                                 shell=True, preexec_fn=os.setsid) 
         time.sleep(0.2) 
 
@@ -78,6 +79,7 @@ def main():
     parser.add_argument("-l", "--lport", help="start local port, default is 1080", default=1080, type=int)
     parser.add_argument('-v', '--verbose', help="verbose log", action='store_true', default=False)
     parser.add_argument('-T', '--threads', help="threads number, default is 10", default=10, type=int)
+    parser.add_argument('-x', '--xray', help="use xray core instead v2ray", action='store_true', default=False)
     parser.add_argument('--url', help="get proxy from url")
     parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
     args = parser.parse_args()
@@ -85,11 +87,20 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     
-    if not is_tool('v2ray'):
-        logging.error("v2ray not found, please install shadowsocks client first")
+    if not is_tool('v2ray') and not args.xray:
+        logging.error("v2ray not found, please install v2ray first")
         logging.error("\thttps://www.v2fly.org/en_US/guide/install.html")
         exit(1)
 
+    if args.xray :
+        if is_tool('xray'):
+            global CORE
+            CORE = "xray"
+        else :
+            logging.error("xray not found, please install xray first")
+            logging.error("\thttps://github.com/XTLS/Xray-core#installation")
+            exit(1)
+    
     lines = []
     if args.file:
         with open(args.file, 'r', encoding='UTF-8') as file:

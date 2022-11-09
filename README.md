@@ -6,8 +6,9 @@ some proxy tools
 ## Requirements
 - [python3](https://www.python.org/downloads)
 - [install requirements packages](https://gist.github.com/mheidari98/8ae29b88bd98f8f59828b0ec112811e7)
-- [shadowsocks client](https://github.com/shadowsocks/shadowsocks-libev#installation)    
+- [shadowsocks](https://github.com/shadowsocks/shadowsocks-libev#installation)    
 - [v2ray](https://www.v2fly.org/en_US/guide/install.html)
+- [xray](https://github.com/XTLS/Xray-core#installation)
 
 ## Usage
   fast checkout live proxy:
@@ -33,6 +34,7 @@ some proxy tools
 - [x] support vmess protocol
 - [x] support vless protocol
 - [x] support trojan protocol
+- [x] support xray-core
 - [ ] add more free server proxy
 - [x] threading support
 - [ ] complete Document
