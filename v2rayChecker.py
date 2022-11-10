@@ -82,6 +82,7 @@ def main():
     parser.add_argument('-x', '--xray', help="use xray core instead v2ray", action='store_true', default=False)
     parser.add_argument('--url', help="get proxy from url")
     parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
+    parser.add_argument('--stdin', help="get proxy from stdin", action='store_true', default=False)
     args = parser.parse_args()
     
     if args.verbose:
@@ -112,6 +113,9 @@ def main():
 
     if args.free :
         lines += ScrapURL('https://raw.githubusercontent.com/freefq/free/master/v2')
+
+    if args.stdin :
+        lines += parseContent(sys.stdin.read())
     
     logging.info(f"We have {len(lines)} proxy to check")
     
