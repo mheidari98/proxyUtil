@@ -11,21 +11,35 @@ some proxy tools
 - [xray](https://github.com/XTLS/Xray-core#installation)
 
 ## Usage
-  fast checkout live proxy:
++ fast checkout live proxy:
   ```bash
   ./v2rayChecker.py -T 50 -f servers.txt
   ```
-  for check shadowsocks proxy in shadowServer.txt with 50 thread and 3sec timeout with specific domain:
+  or :
+  ```bash
+  cat servers.txt | ./v2rayChecker.py -T 50 --stdin 
+  ```
++ for check shadowsocks proxy in shadowServer.txt with 50 thread and 3sec timeout with specific domain:
   ```bash
   ./shadowChecker.py --domain https://www.google.com --timeout 3  -T 50 -f shadowServer.txt
   ```
-  for check proxy from specific url:
++ for check proxy from specific url:
   ```bash
   ./v2rayChecker.py --url 'https://www.site.xyz/servers.txt'
   ```
-  get and check some free proxy:
++ get and check some free proxy:
   ```bash
   ./v2rayChecker.py --free
+  ```
+
+---
+
+tip: better to use a fixed IP address instead of fully qualified domain name (FQDN), cuz a FQDN would require a DNS lookup. When the machine does not have a working internet connection, the DNS lookup itself may block for more than a second. ([stackoverflow](https://stackoverflow.com/questions/3764291))  
++ find a current IP address for google.com (on unix) by running :
+  ```console
+  % dig +noall +answer google.com
+  ...
+  google.com.     300 IN  A   216.58.192.142
   ```
 ---
 
