@@ -65,6 +65,7 @@ def main():
     parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
     parser.add_argument('--stdin', help="get proxy from stdin", action='store_true', default=False)
     parser.add_argument('--reuse', help="reuse last checked proxy", action='store_true', default=False)
+    parser.add_argument('-o', '--output', help="output file", default='sortedShadow.txt')
     args = parser.parse_args()
     
     if args.verbose:
@@ -80,13 +81,13 @@ def main():
     killProcess('ss-local') # init system
 
     lines = set()
-    if args.file:
+    if args.file and os.path.isfile(args.file):
         with open(args.file, 'r', encoding='UTF-8') as file:
             lines.update( parseContent(file.read().strip(), [ss_scheme]) )
             logging.info(f"got {len(lines)} from reading proxy from file")
 
-    if args.reuse:
-        with open("sortedShadow.txt", 'r', encoding='UTF-8') as f:
+    if args.reuse and os.path.isfile(args.output):
+        with open(args.output, 'r', encoding='UTF-8') as f:
             lines.update( parseContent(f.read().strip()) )
 
     if args.url :
@@ -123,7 +124,7 @@ def main():
     liveProxy = [*itertools.chain(*results)]
 
     liveProxy.sort(key=lambda x: x[1])
-    with open('sortedShadow.txt', 'w') as f:
+    with open(args.output, 'w') as f:
         for ss_url in liveProxy:
             f.write(f"{ss_url[0]}\n")
 
