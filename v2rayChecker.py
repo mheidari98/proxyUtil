@@ -7,7 +7,7 @@ import concurrent.futures
 import tempfile
 from modules.myUtil import *
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 CORE = "v2ray"
 tempdir = tempfile.mkdtemp()
@@ -30,14 +30,14 @@ def Checker(proxyList, localPort, testDomain, timeOut):
                     jsonLoad["protocol"] = "vmess"
                     config = createVmessConfig(jsonLoad, port=localPort)
                 else :
-                    logging.warning("Not Implemented this type of vmess url")
+                    logging.debug("Not Implemented this type of vmess url")
                     continue
             elif ParseResult.scheme == "vless" :
                 config = createVmessConfig(parseVless(ParseResult), port=localPort)
             elif ParseResult.scheme == "trojan" :
                 config = createTrojanConfig(ParseResult, localPort=localPort)
             else :
-                logging.warning(f"Not Implemented {ParseResult.scheme}")
+                logging.debug(f"Not Implemented {ParseResult.scheme}")
                 continue
         except Exception as err :
             logging.error(err)
@@ -63,7 +63,7 @@ def Checker(proxyList, localPort, testDomain, timeOut):
                 logging.warning(f"[{'failed'}] with ping={ping}")
                 pass
         else :
-            logging.info(f"[dead] Not alive")
+            logging.debug(f"[dead] Not alive")
 
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)  # Send the signal to all the process groups
         time.sleep(0.1)    # sleep 0.1 seconds
@@ -77,15 +77,19 @@ def main():
     parser.add_argument("-d", "--domain", help="test connect domain", default='https://www.google.com')
     parser.add_argument("-t", "--timeout", help="timeout in seconds, default is 3", default=3 , type=int)
     parser.add_argument("-l", "--lport", help="start local port, default is 1080", default=1080, type=int)
-    parser.add_argument('-v', '--verbose', help="verbose log", action='store_true', default=False)
+    parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
+    parser.add_argument('-vv', '--debug', help="debug log", action='store_true', default=False)
     parser.add_argument('-T', '--threads', help="threads number, default is 10", default=10, type=int)
     parser.add_argument('-x', '--xray', help="use xray core instead v2ray", action='store_true', default=False)
     parser.add_argument('--url', help="get proxy from url")
     parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
     parser.add_argument('--stdin', help="get proxy from stdin", action='store_true', default=False)
+    parser.add_argument('--reuse', help="reuse last checked proxy", action='store_true', default=False)
     args = parser.parse_args()
     
     if args.verbose:
+        logging.getLogger().setLevel(logging.INFO)
+    if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
     
     if not is_tool('v2ray') and not args.xray:
@@ -102,25 +106,30 @@ def main():
             logging.error("\thttps://github.com/XTLS/Xray-core#installation")
             exit(1)
     
-    lines = []
+    lines = set()
     if args.file:
         with open(args.file, 'r', encoding='UTF-8') as file:
-            lines = parseContent(file.read().strip())
+            lines.update( parseContent(file.read().strip()) )
             logging.info(f"got {len(lines)} from reading proxy from file")
 
+    if args.reuse:
+        with open("sortedProxy.txt", 'r', encoding='UTF-8') as f:
+            lines.update( parseContent(f.read().strip()) )
+
     if args.url :
-        lines += ScrapURL(args.url)
+        lines.update( ScrapURL(args.url) )
 
     if args.free :
-        lines += ScrapURL('https://raw.githubusercontent.com/freefq/free/master/v2')
+        lines.update( ScrapURL('https://raw.githubusercontent.com/freefq/free/master/v2') )
 
     if args.stdin :
-        lines += parseContent(sys.stdin.read())
+        lines.update( parseContent(sys.stdin.read()) )
     
+    lines = list(lines)
     logging.info(f"We have {len(lines)} proxy to check")
     
     if not lines:
-        logging.warning("No proxy to check")
+        logging.error("No proxy to check")
         return
     
     N = min(args.threads, len(lines))
