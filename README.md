@@ -63,6 +63,8 @@ tip: better to use a fixed IP address instead of fully qualified domain name (FQ
   # proxify bash
   proxychains bash
   ```
++ [Proxy performance batch tester based on Shadowsocks(R) and V2Ray](https://github.com/tindy2013/stairspeedtest-reborn)
++ [A simple tool for batch test ss/ssr/v2ray/trojan servers](https://github.com/xxf098/LiteSpeedTest)
 * [vmess to json](https://github.com/boypt/vmess2json/wiki/vmess2json)
 * [Some examples of uses for V2ray-core](https://github.com/v2fly/v2ray-examples)
 * [Some examples of uses for Xray-core](https://github.com/XTLS/Xray-examples)
