@@ -185,6 +185,17 @@ def sslocal2ssURI(cmd):
     return f"ss://{base64.b64encode(msg.encode('ascii')).decode('ascii')}"
 
 
+def ssURI2sslocal(ss_url, localPort=1080, file2storePID=""):
+    server, server_port, method, password, plugin, plugin_opts, tag = parse_ss_withPlugin(ss_url)
+    extended = ''
+    if plugin or plugin_opts:
+        extended = f" --plugin {plugin} --plugin-opts '{plugin_opts}'"
+    cmd = f"ss-local -s {server} -p {server_port} -l {localPort} -m {method} -k '{password}'{extended}"
+    if file2storePID:
+        cmd += f" -f {file2storePID}"
+    return cmd
+
+
 def checkPatternsInList(lines, patterns=proxyScheme):
     result = []
     for line in lines:

@@ -14,17 +14,13 @@ def main():
     results = []
     
     if args.input :
-        server, server_port, method, password = parse_ss(args.input)
-        cmd = f"ss-local -s {server} -p {server_port} -l {args.lport} -m {method} -k {password} -f ./ss.pid"
-        results.append( cmd )
+        results.append( ssURI2sslocal(args.input, args.lport) )
     
     if args.file :
         with open(args.file, 'r') as file:
             lines = parseContent(file.read().strip(), [ss_scheme])
             for line in lines:
-                server, server_port, method, password = parse_ss(line.rstrip())
-                cmd = f"ss-local -s {server} -p {server_port} -l {args.lport} -m {method} -k {password} -f ./ss.pid"
-                results.append( cmd )
+                results.append( ssURI2sslocal(line.rstrip(), args.lport) )
     
     outputs = '\n'.join(results) 
     if args.output :
