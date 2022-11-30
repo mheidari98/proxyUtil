@@ -69,11 +69,13 @@ ssOut = {
         {
             "protocol": "shadowsocks",
             "settings": {
+                "plugin": "",
+                "pluginOpts": "",
                 "servers": [
                     {
                         "address": "serveraddr.com", # Server address of Shadowsocks 
                         "method": "aes-128-gcm", # Encryption method of Shadowsocks 
-                        "ota": False, # Whether enable OTA, default is false, we don't recommand enable this as decrepted by Shadowsocks
+                        #"ota": False, # Whether enable OTA, default is false, we don't recommand enable this as decrepted by Shadowsocks
                         "password": "sspasswd", # Password of Shadowsocks 
                         "port": 1024
                     }
@@ -123,7 +125,8 @@ vmessOut = {
             },
             "streamSettings": {
                 "tlsSettings": {
-                    "disableSystemRoot": False
+                    "disableSystemRoot": False,
+                    "allowInsecure": True
                 },
                 "xtlsSettings": {
                     "disableSystemRoot": False
@@ -159,7 +162,7 @@ trojanOut = {
                     }
                 },
                 "tlsSettings": {
-                    "allowInsecure": False,
+                    "allowInsecure": True,
                     "serverName": ""
                 }
             }
@@ -193,14 +196,17 @@ def checkPatternsInList(lines, patterns=proxyScheme):
     return result
 
 
-def writeConfig2json(server, server_port, method, password, local_port=1080, configFile='CONFIG.json'):
+def ssConfig2json(ss_url, local_port=1080, configFile='CONFIG.json'):
     # https://manpages.debian.org/testing/shadowsocks-libev/shadowsocks-libev.8.en.html#CONFIG_FILE
+    server, server_port, method, password, plugin, plugin_opts, tag = parse_ss_withPlugin(ss_url)
     config = {
         "server" : server, 
-        "server_port" : server_port, 
+        "server_port" : int(server_port), 
         "method" : method, 
         "password" : password, 
-        "local_port" : local_port
+        "local_port" : local_port,
+        "plugin": plugin,
+        "plugin_opts": plugin_opts
     }
     
     with open(configFile, 'w', encoding='utf-8') as f:
@@ -294,6 +300,30 @@ def parse_ss(ss_url) :
     method, password , server, server_port = re.search("^(.+?):(.+)@(.+):(\d+)", unquote(mainPart)).groups()
     logging.debug(f"{server}:{server_port} {method} {password} {plugin}")
     return server, server_port, method, password
+
+
+def parse_ss_withPlugin(ss_url) :
+    # https://shadowsocks.org/guide/sip002.html
+    mainPart, tag = (ss_url[5:].split("#", 1) + [''])[:2]
+
+    try :
+        mainPart, query = mainPart.split("?")
+        plugin, plugin_opts = parse_qs(query)['plugin'][0].split(';', 1)
+    except :
+        plugin, plugin_opts = '', ''
+
+    if mainPart[-1]=='/':
+        mainPart = mainPart[:-1]
+
+    if isBase64(mainPart) :
+        mainPart = base64Decode(mainPart)
+    else :
+        decoded = mainPart[:mainPart.find('@')]
+        mainPart = mainPart.replace(decoded, base64Decode(decoded), 1)
+
+    method, password , server, server_port = re.search("^(.+?):(.+)@(.+):(\d+)", unquote(mainPart)).groups()
+
+    return server, server_port, method, password, plugin, plugin_opts, unquote(tag)
 
 
 def parse_ssr(ssr_url) :
@@ -425,8 +455,10 @@ def createShadowConfig(ss_url, port=1080):
     
     config['inbounds'][0]['port'] = port
     
-    server, server_port, method, password = parse_ss(ss_url)
-    
+    server, server_port, method, password, plugin, plugin_opts, tag = parse_ss_withPlugin(ss_url)
+
+    config['outbounds'][0]['settings']['plugin'] = plugin
+    config['outbounds'][0]['settings']['pluginOpts'] = plugin_opts
     config['outbounds'][0]['settings']['servers'][0]['address']  = server
     config['outbounds'][0]['settings']['servers'][0]['port']     = int(server_port)
     config['outbounds'][0]['settings']['servers'][0]['method']   = method
