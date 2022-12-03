@@ -11,27 +11,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 CORE = "xray"
 tempdir = tempfile.mkdtemp()
 
-PROXYCHAINS = """
-strict_chain
-proxy_dns 
-remote_dns_subnet 224
-tcp_read_time_out 15000
-tcp_connect_time_out 8000
-localnet 127.0.0.0/255.0.0.0
-quiet_mode
-
-[ProxyList]
-socks5  127.0.0.1 {LOCAL_PORT}
-"""
-
-def set_proxychains(localPort):
-    pchPath = os.path.expanduser('~/.proxychains/proxychains.conf')
-    if os.path.exists(pchPath):
-        os.system(f"cp {pchPath} {pchPath}.bak")
-    with open(pchPath, "w") as f:
-        f.write(PROXYCHAINS.format(LOCAL_PORT=localPort))
-    logging.info("proxychains.conf updated!")
-
 
 def ss_runner(ss_url, localPort):
     cmd = ssURI2sslocal(ss_url, localPort)
@@ -103,6 +82,7 @@ def main():
     parser.add_argument("--v2ray", help="use v2ray-core", action="store_true")
     parser.add_argument("--ss", help="use shadowsocks-libev", action="store_true")
     parser.add_argument("--proxychains", help="set proxychains", action="store_true")
+    parser.add_argument("--system", help="set system proxy", action="store_true")
     args = parser.parse_args()
 
     if is_port_in_use(args.lport):
@@ -117,6 +97,9 @@ def main():
         set_proxychains(args.lport)
 
     logging.info(f"Starting proxy client on port {args.lport} with PID {os.getpid()}")
+
+    if args.system:
+        set_system_proxy(proxyHost="127.0.0.1", proxyPort=args.lport, enable=True)
 
     if args.ss and args.link.startswith("ss://"):
         if not is_tool('ss-local'):
@@ -134,6 +117,9 @@ def main():
         global CORE
         CORE = "v2ray"
     v2ray_runner(args.link, args.lport)
+
+    if args.system:
+        set_system_proxy(enable=False)
 
 
 if __name__ == '__main__':

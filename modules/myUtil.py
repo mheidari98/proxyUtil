@@ -170,6 +170,19 @@ trojanOut = {
     ]
 }
 
+PROXYCHAINS = """
+strict_chain
+proxy_dns 
+remote_dns_subnet 224
+tcp_read_time_out 15000
+tcp_connect_time_out 8000
+localnet 127.0.0.0/255.0.0.0
+quiet_mode
+
+[ProxyList]
+socks5  127.0.0.1 {LOCAL_PORT}
+"""
+
 
 def finder(cmd, spliter):
     return re.search(f"\s+{spliter}\s+(\S+)", cmd).group(1)
@@ -566,4 +579,46 @@ def createTrojanConfig(loaded, localPort=1080):
         config['outbounds'][0]['streamSettings']['tlsSettings']["allowInsecure"] = True
         
     return config
+
+
+def set_proxychains(localPort=1080):
+    pchPath = os.path.expanduser('~/.proxychains/proxychains.conf')
+    if os.path.exists(pchPath):
+        os.system(f"cp {pchPath} {pchPath}.bak")
+    with open(pchPath, "w") as f:
+        f.write(PROXYCHAINS.format(LOCAL_PORT=localPort))
+    logging.info("proxychains.conf updated!")
+
+
+def set_system_proxy(proxyHost="127.0.0.1", proxyPort=1080, proxyType="socks5", enable=True):
+    if os.name == "nt":
+        logging.info("Not Implemented for Windows")
+        return
+    else:
+        # export {https,ftp,rsync,all}__proxy=socks5://127.0.0.1:1080
+        proxy = f"{proxyType}://{proxyHost}:{proxyPort}"
+        all_proxy = f"export all_proxy={proxy}"
+        no_proxy = "export no_proxy=localhost,127.0.0.0/8,192.168.0.0/16,::1"
+        
+        SHELL = os.environ.get('SHELL')
+        if "zsh" in SHELL:
+            file = "~/.zshrc"
+        elif "bash" in SHELL:
+            file = "~/.bashrc"
+        else:
+            logging.error(f"Not supported SHELL: {SHELL}")
+            return
+
+        # get current bashrc
+        with open(os.path.expanduser(file), "r") as f:
+            lines = f.readlines()
+        # remove old proxy setting
+        lines = [line for line in lines if not line.startswith("export all_proxy=") and not line.startswith("export no_proxy=")]
+        if enable:
+            lines.append(f"{all_proxy} && {no_proxy}")
+        # save to bashrc
+        with open(os.path.expanduser(file), "w") as f:
+            f.writelines(lines)
+        #os.system(f"source {file}")
+        logging.info("set proxy done!" if enable else "unset proxy done!")
 
