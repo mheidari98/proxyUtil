@@ -14,13 +14,14 @@ import time
 import urllib
 import uuid
 from copy import deepcopy
-from urllib.parse import (parse_qs, parse_qsl, unquote, urldefrag, urlencode,
-                          urljoin, urlparse, urlsplit, urlunparse)
-
+from urllib.parse import (parse_qs, parse_qsl, quote, quote_plus, unquote,
+                          urldefrag, urlencode, urljoin, urlparse, urlsplit,
+                          urlunparse)
 import numpy as np
 import psutil
 import requests
 import urllib3
+from ruamel import yaml
 
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 
@@ -303,6 +304,17 @@ def generate_uuid(basedata):
 def Create_ss_url(server, server_port, method, password):
     return f"ss://{base64.urlsafe_b64encode((method+':'+password).encode()).decode('utf-8')}@{server}:{server_port}"
 
+def Create_ss_url_withPlugin(server, server_port, method, password, plugin="", plugin_opts="", tag="") :
+    extended = ''
+    if plugin or plugin_opts:
+        extended = f"/?plugin={quote_plus(f'{plugin};{plugin_opts}')}"
+    tag = tag if tag else "Woman,Life,Freedom"
+    return f"ss://{base64.urlsafe_b64encode((method+':'+password).encode()).decode('utf-8').replace('=','')}@{server}:{server_port}{extended}#{tag}"
+
+
+def Create_vmess_url(jsonLoad):
+    return 'vmess://' + base64.b64encode(json.dumps(jsonLoad, indent=4).encode('utf-8')+b'\n').decode()
+
 
 def parse_ss(ss_url) :
     # https://github.com/shadowsocks/shadowsocks-org/blob/master/whitepaper/whitepaper.md
@@ -458,14 +470,14 @@ def ScrapURL(url, patterns=proxyScheme):
         res = requests.get(url, timeout=4)
     except Exception as e:
         logging.debug("Exception occurred", exc_info=True)
-        logging.error(f"Can't reach {url}.")
+        logging.error(f"Can't reach {url}")
         return newProxy
     
     if (res.status_code//100) == 2:
         newProxy = parseContent(res.text.strip(), patterns)
-        logging.info(f"Got {len(newProxy)} new proxy from {url}.")
+        logging.info(f"Got {len(newProxy)} new proxy from {url}")
     else:
-        logging.error(f"Can't get {url}. status code = {res.status_code}")
+        logging.error(f"Can't get {url} , status code = {res.status_code}")
     return newProxy
 
 
@@ -621,4 +633,26 @@ def set_system_proxy(proxyHost="127.0.0.1", proxyPort=1080, proxyType="socks5", 
             f.writelines(lines)
         #os.system(f"source {file}")
         logging.info("set proxy done!" if enable else "unset proxy done!")
+
+
+def installDocker():
+    if not is_tool('docker'):
+        # Install docker if docker are not installed
+        try:
+            try:
+                logging.info("Docker Not Found.\nInstalling Docker ...")
+                subprocess.run("curl https://get.docker.com | sh", shell=True, check=True)
+            except subprocess.CalledProcessError:
+                sys.exit("Download Failed !")
+
+            # Check if Docker Service are Enabled
+            systemctl = subprocess.call(["systemctl", "is-active", "--quiet", "docker"])
+            if systemctl:
+                subprocess.call(["systemctl", "enable", "--now", "--quiet", "docker"])
+            time.sleep(2)
+        except subprocess.CalledProcessError as e:
+            sys.exit(e)
+        except PermissionError:
+            sys.exit("ًroot privileges required")
+    logging.info("Docker Installed")
 
