@@ -22,14 +22,12 @@ def Checker(shadowList, localPort, testDomain, timeOut):
     pidPath = f"{tempdir}/ss.pid.{localPort}"
     
     for ss_url in shadowList :
-        server, server_port, method, password = parse_ss(ss_url)
+        server, server_port, method, password, plugin, plugin_opts, tag = parse_ss_withPlugin(ss_url)
 
         if not isValidIP(server) and not getIP(server):
             continue
-
-        #writeConfig2json(server, server_port, method, password, local_port=1080, configFile='{tempdir}/CONFIG.json.{localPort}')
-        #cmd = f"ss-local -c {tempdir}/CONFIG.json.{localPort} -f {pidPath}"
-        cmd = f"ss-local -s {server} -p {server_port} -l {localPort} -m {method} -k '{password}' -f {pidPath}"
+        
+        cmd = ssURI2sslocal(ss_url, localPort, pidPath)
         os.system(cmd)
         time.sleep(0.2) 
 
