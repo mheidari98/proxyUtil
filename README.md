@@ -4,7 +4,7 @@
 some proxy tools
 
 ## Requirements
-- [python 3.9](https://www.python.org/downloads)
+- [python 3](https://www.python.org/downloads)
 - [install requirements packages](https://gist.github.com/mheidari98/8ae29b88bd98f8f59828b0ec112811e7)
 - [install shadowsocks](https://github.com/shadowsocks/shadowsocks-libev#installation)    
 - [install v2ray](https://www.v2fly.org/en_US/guide/install.html)
