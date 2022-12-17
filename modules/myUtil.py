@@ -486,8 +486,20 @@ def split2Npart(a, n):
     return (a[i*k+min(i, m):(i+1)*k+min(i+1, m)] for i in range(n))
 
 
+def mergeMultiDicts(*dicts):
+    result = {}
+    for d in dicts:
+        if sys.version_info >= (3, 9):
+            result |= d
+        elif sys.version_info >= (3, 5):
+            result = {**result, **d}
+        else:
+            result.update(d)
+    return result
+
+
 def createShadowConfig(ss_url, port=1080):
-    config = deepcopy(dns|inbounds|ssOut)
+    config = deepcopy( mergeMultiDicts(dns, inbounds, ssOut) )
     
     config['inbounds'][0]['port'] = port
     
@@ -504,7 +516,7 @@ def createShadowConfig(ss_url, port=1080):
 
 
 def createSsrConfig(ssr_url, localPort=1080):
-    config = deepcopy(dns|inbounds|ssrOut)
+    config = deepcopy( mergeMultiDicts(dns, inbounds, ssrOut) )
     ssr_parsed = parse_ssr(ssr_url)
     config['inbounds'][0]['port'] = localPort
     config['outbounds'][0]['settings']['servers'][0]['address']  = ssr_parsed['address']
@@ -519,7 +531,7 @@ def createSsrConfig(ssr_url, localPort=1080):
 
 
 def createVmessConfig(jsonLoad, port=1080):
-    config = deepcopy(dns|inbounds|vmessOut)
+    config = deepcopy( mergeMultiDicts(dns, inbounds, vmessOut) )
 
     config['inbounds'][0]['port'] = port
 
@@ -571,7 +583,7 @@ def createVmessConfig(jsonLoad, port=1080):
 
 
 def createTrojanConfig(loaded, localPort=1080):
-    config = deepcopy(dns|inbounds|trojanOut)
+    config = deepcopy( mergeMultiDicts(dns, inbounds, trojanOut) )
     
     trojan_parsed = parseTrojan(loaded)
     
