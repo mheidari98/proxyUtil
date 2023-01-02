@@ -29,6 +29,8 @@ def main():
     parser.add_argument('--url', help="get proxy from url")
     parser.add_argument('--stdin', help="get proxy from stdin", action='store_true', default=False)
     parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
+    # https://github.com/Dreamacro/clash/wiki/Clash-Premium-Features
+    parser.add_argument('--premium', help="use Clash Premium Features", action='store_true', default=False)
     parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
     parser.add_argument('-vv', '--debug', help="debug log", action='store_true', default=False)
     parser.add_argument('-o', '--output', help="output file", default='clashConfig.yaml')
@@ -80,6 +82,10 @@ def main():
         #myclash = yaml.load(f, Loader=yaml.FullLoader)
         #myclash = yaml.safe_load(f)
         myclash = yaml.load(f, Loader=yaml.RoundTripLoader)
+
+    if not args.premium:
+        myclash.pop('rule-providers')
+        myclash['rules'] = myclash['rules'][1:]
 
     myclash['proxies'] = clashyml['proxies']
 
