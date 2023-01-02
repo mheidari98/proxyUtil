@@ -11,6 +11,8 @@ logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %
 
 CORE = "v2ray"
 tempdir = tempfile.mkdtemp()
+time2exec = 1
+time2kill = 0.1
 
 def Checker(proxyList, localPort, testDomain, timeOut):
     liveProxy = []
@@ -50,7 +52,7 @@ def Checker(proxyList, localPort, testDomain, timeOut):
 
         proc = subprocess.Popen(f"{CORE} run -config {configName}", stdout=subprocess.PIPE, 
                                 shell=True, preexec_fn=os.setsid) 
-        time.sleep(0.2) 
+        time.sleep(time2exec) 
 
         ping = is_alive(testDomain, proxy, timeOut)
         if ping:
@@ -66,7 +68,7 @@ def Checker(proxyList, localPort, testDomain, timeOut):
             logging.debug(f"[dead] Not alive")
 
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)  # Send the signal to all the process groups
-        time.sleep(0.1)    # sleep 0.1 seconds
+        time.sleep(time2kill)
 
     return liveProxy
 
@@ -81,6 +83,8 @@ def main():
     parser.add_argument('-vv', '--debug', help="debug log", action='store_true', default=False)
     parser.add_argument('-T', '--threads', help="threads number, default is 10", default=10, type=int)
     parser.add_argument('-x', '--xray', help="use xray core instead v2ray", action='store_true', default=False)
+    parser.add_argument('--t2exec', help="time to execute v2ray, default is 1", default=1, type=float)
+    parser.add_argument('--t2kill', help="time to kill v2ray, default is 0.1", default=0.1, type=float)
     parser.add_argument('--url', help="get proxy from url")
     parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
     parser.add_argument('--stdin', help="get proxy from stdin", action='store_true', default=False)
@@ -92,6 +96,10 @@ def main():
         logging.getLogger().setLevel(logging.INFO)
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+    
+    global time2exec, time2kill
+    time2exec = args.t2exec
+    time2kill = args.t2kill
     
     if not is_tool('v2ray') and not args.xray:
         logging.error("v2ray not found, please install v2ray first")
