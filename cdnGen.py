@@ -58,7 +58,13 @@ def main():
         logging.error("Error to parse proxy link")
         exit(1)
 
-    if ('host' not in jsonLoad) or (not jsonLoad['host']) :
+    if 'tls' in jsonLoad and jsonLoad['tls']=='tls' :
+        if 'sni' in jsonLoad and jsonLoad['sni'] :
+            jsonLoad['host'] = jsonLoad['sni']
+        elif 'host' in jsonLoad and jsonLoad['host'] :
+            jsonLoad['sni'] = jsonLoad['host']
+        logging.debug(f"sni : {jsonLoad['sni']}")
+    elif ('host' not in jsonLoad) or (not jsonLoad['host']) :
         jsonLoad['host'] = jsonLoad['add']
     
     logging.debug(f"host: {jsonLoad['host']}")
