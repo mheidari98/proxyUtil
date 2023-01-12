@@ -487,6 +487,7 @@ def split2Npart(a, n):
 
 
 def mergeMultiDicts(*dicts):
+    # https://stackoverflow.com/questions/38987#26853961
     result = {}
     for d in dicts:
         if sys.version_info >= (3, 9):
@@ -576,8 +577,9 @@ def createVmessConfig(jsonLoad, port=1080):
 
     if jsonLoad["tls"]:  #   "tls"
         config['outbounds'][0]["streamSettings"]["security"] = jsonLoad["tls"]
+        config['outbounds'][0]["streamSettings"]["tlsSettings"]["serverName"] = jsonLoad['sni']
     if "skip-cert-verify" in jsonLoad and jsonLoad["skip-cert-verify"]:
-        config['outbounds'][0]["streamSettings"]["tlsSettings"] = {"allowInsecure": True}
+        config['outbounds'][0]["streamSettings"]["tlsSettings"]["allowInsecure"] = True
     
     return config
 
