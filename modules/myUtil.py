@@ -388,6 +388,7 @@ def parseVless(loaded):
     queryDict["id"] = uid
     queryDict["net"] = notNone(queryDict.pop("type") if 'type' in queryDict else '')
     queryDict["tls"] = notNone(queryDict.pop("security") if 'security' in queryDict else '')
+    queryDict["encryption"] = "none"
     
     return json.loads(json.dumps(queryDict))
 
