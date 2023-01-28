@@ -387,6 +387,8 @@ def parseVless(loaded):
     queryDict["port"] = port
     queryDict["id"] = uid
     queryDict["net"] = notNone(queryDict.pop("type") if 'type' in queryDict else '')
+    if queryDict["net"] == 'grpc':
+        queryDict["path"] = notNone(queryDict.pop("serviceName") if 'serviceName' in queryDict else '')
     queryDict["tls"] = notNone(queryDict.pop("security") if 'security' in queryDict else '')
     queryDict["encryption"] = "none"
     
