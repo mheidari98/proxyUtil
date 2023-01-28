@@ -5,10 +5,31 @@
 import argparse
 from modules.myUtil import *
 
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 CLASH_SAMPLE_PATH = './modules/Clash-Template.yaml'
 
+startSubConverter = f"docker run -d --rm --name 'subconverter' -p 25500:25500 tindy2013/subconverter:latest"
+stopSubConverter = f"docker stop subconverter"
+
+# https://github.com/blackmatrix7/ios_rule_script/tree/master/rule/Clash
+# https://github.com/ACL4SSR/ACL4SSR/tree/master/Clash
+# https://github.com/Hackl0us/SS-Rule-Snippet
+# https://github.com/chiroots/iran-hosted-domains
+# https://github.com/MasterKia/PersianBlocker
+# https://github.com/farrokhi/adblock-iran
+
+DIRECT_RULE_SET = [
+    # name, behavior, url
+    ("iran", "classical", "https://github.com/SamadiPour/iran-hosted-domains/releases/latest/download/clash_rules.yaml"),
+    ("private", "domain", "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/private.txt"),
+    ("lancidr", "ipcidr", "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/lancidr.txt"),
+]
+
+REJECT_RULE_SET = [
+    # name, behavior, url
+    ("adblock", "domain", "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/reject.txt"),
+]
 
 def checkSubConverter():
     for i in range(10):
@@ -23,12 +44,45 @@ def checkSubConverter():
         sys.exit("subconverter start failed")
 
 
+def mySubprocessRun(cmd):
+    logging.debug(f"run {cmd}")
+    p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) # subprocess.DEVNULL
+    if p.returncode:
+        logging.error(f"run {cmd} failed")
+        logging.error(p.stderr.decode())
+    return p.returncode, p.stdout.decode(), p.stderr.decode()
+
+
+def getRuleSet(behavior, url, policy="DIRECT"):
+    try:
+        res = requests.get(url)
+    except:
+        logging.error(f"get {url} failed")
+        return []
+    if res.status_code != 200:
+        logging.error(f"get {url} failed")
+        return []
+    rules = yaml.safe_load(res.text)['payload']
+    logging.info(f"got {len(rules)} rules from {url}")
+    if behavior == "classical":
+        return [*map( lambda s: f"{s},{policy}", rules)] 
+    elif behavior == "domain":
+        return [*map( lambda s: f"DOMAIN,{s},{policy}", rules)] 
+    elif behavior == "ipcidr":
+        return [*map( lambda s: f"IP-CIDR,{s},{policy}", rules)]
+    else:
+        logging.error(f"unknown behavior {behavior}")
+        return []
+
+
 def main():
     parser = argparse.ArgumentParser(description="Simple Clash Config Generator")
     parser.add_argument("-f", "--file", help="file contain ss proxy")
     parser.add_argument('--url', help="get proxy from url")
     parser.add_argument('--stdin', help="get proxy from stdin", action='store_true', default=False)
     parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
+    parser.add_argument('--dns', help="use DNS server", action='store_true', default=False)
+    parser.add_argument('--rule', help="use rules", action='store_true', default=False)
     # https://github.com/Dreamacro/clash/wiki/Clash-Premium-Features
     parser.add_argument('--premium', help="use Clash Premium Features", action='store_true', default=False)
     parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
@@ -66,8 +120,48 @@ def main():
     
     installDocker()
     
-    cmd = f"docker run -d --rm --name 'subconverter' -p 25500:25500 tindy2013/subconverter:latest"
-    subprocess.run(cmd, shell=True, check=True)
+    with open(CLASH_SAMPLE_PATH) as f:
+        myclash = yaml.load(f, Loader=yaml.RoundTripLoader)
+
+    if not args.dns:
+        myclash.pop('dns')
+
+    if args.premium:
+        rulesets = {}
+        for name, behavior, url in (DIRECT_RULE_SET+REJECT_RULE_SET):
+            rulesets[f"{name}"] = {
+                    "type": "http",
+                    "behavior": f"{behavior}",
+                    "url": f"{url}",
+                    "path": f"./ruleset/{name}.yaml",
+                    "interval": 86400
+            }
+        myclash['rule-providers'] = rulesets
+        rules = [ f"RULE-SET,{ruleset[0]},DIRECT" for ruleset in DIRECT_RULE_SET]
+        rules += [ f"RULE-SET,{ruleset[0]},REJECT" for ruleset in REJECT_RULE_SET]
+        rules.append("MATCH,🔆 LIST")
+        myclash['rules'] = rules
+
+    elif args.rule:
+        myclash.pop('rule-providers')
+        rules = []
+        for name, behavior, url in DIRECT_RULE_SET:
+            rules.extend( getRuleSet(behavior, url, "DIRECT"))
+        for name, behavior, url in REJECT_RULE_SET:
+            rules.extend( getRuleSet(behavior, url, "REJECT"))
+        rules.append("MATCH,🔆 LIST")
+        myclash['rules'] = rules
+    else:
+        myclash.pop('rule-providers')
+    
+    
+    returncode, stdout, stderr = mySubprocessRun(startSubConverter)
+    if returncode != 0:
+        returncode, stdout, stderr = mySubprocessRun(stopSubConverter)
+        returncode, stdout, stderr = mySubprocessRun(startSubConverter)
+        if returncode != 0:
+            logging.error(f"start clash failed, {stdout}, {stderr}")
+            return
 
     checkSubConverter()
 
@@ -75,17 +169,7 @@ def main():
     res = requests.get(f"http://127.0.0.1:25500/sub?target=clash&url={URLEncode}", timeout=10)
 
     clashyml = yaml.safe_load(res.text)
-    
     proxyNames = [proxy['name'] for proxy in clashyml['proxies']]
-
-    with open(CLASH_SAMPLE_PATH) as f:
-        #myclash = yaml.load(f, Loader=yaml.FullLoader)
-        #myclash = yaml.safe_load(f)
-        myclash = yaml.load(f, Loader=yaml.RoundTripLoader)
-
-    if not args.premium:
-        myclash.pop('rule-providers')
-        myclash['rules'] = myclash['rules'][1:]
 
     myclash['proxies'] = clashyml['proxies']
 
@@ -108,8 +192,10 @@ def main():
     with open(args.output, 'w') as f:
         #yaml.dump(myclash, f, default_flow_style=False, sort_keys=False, indent=4)
         yaml.dump(myclash, f, Dumper=yaml.RoundTripDumper, allow_unicode = True, encoding = None, indent=4)
+        logging.info(f"clash config saved to {args.output}")
 
-    subprocess.run("docker stop subconverter", shell=True, check=True)
+    returncode, stdout, stderr = mySubprocessRun(stopSubConverter)
+    logging.info("subconverter stopped")
 
 
 if __name__ == '__main__':
