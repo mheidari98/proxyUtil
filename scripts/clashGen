@@ -3,11 +3,11 @@
 # https://v2rayse.com/en/v2ray-clash
 # https://realpython.com/python-yaml
 import argparse
-from modules.myUtil import *
+from proxyUtil import *
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-CLASH_SAMPLE_PATH = './modules/Clash-Template.yaml'
+ch = logging.StreamHandler()
+ch.setFormatter(CustomFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[ch])
 
 startSubConverter = f"docker run -d --rm --name 'subconverter' -p 25500:25500 tindy2013/subconverter:latest"
 stopSubConverter = f"docker stop subconverter"
@@ -87,7 +87,7 @@ def main():
     parser.add_argument('--premium', help="use Clash Premium Features", action='store_true', default=False)
     parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
     parser.add_argument('-vv', '--debug', help="debug log", action='store_true', default=False)
-    parser.add_argument('-o', '--output', help="output file", default='clashConfig.yaml')
+    parser.add_argument('-o', '--output', help="output file (default: clashConfig.yaml)", default='clashConfig.yaml')
     args = parser.parse_args()
     
     if args.verbose:

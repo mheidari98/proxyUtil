@@ -14,9 +14,11 @@
 import argparse
 import ipaddress
 import random
-from modules.myUtil import *
+from proxyUtil import *
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+ch = logging.StreamHandler()
+ch.setFormatter(CustomFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[ch])
 
 cdn_url = { 
     'arvan'         : "https://www.arvancloud.ir/fa/ips.txt" , 

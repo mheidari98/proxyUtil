@@ -4,13 +4,14 @@ import argparse
 import tempfile
 import shlex
 import signal
-from modules.myUtil import *
+from proxyUtil import *
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+ch = logging.StreamHandler()
+ch.setFormatter(CustomFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[ch])
 
 CORE = "xray"
 tempdir = tempfile.mkdtemp()
-
 
 def ss_runner(ss_url, localPort):
     cmd = ssURI2sslocal(ss_url, localPort)

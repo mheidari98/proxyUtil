@@ -6,9 +6,11 @@
 import argparse
 import concurrent.futures
 import tempfile
-from modules.myUtil import *
+from proxyUtil import *
 
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+ch = logging.StreamHandler()
+ch.setFormatter(CustomFormatter())
+logging.basicConfig(level=logging.ERROR, handlers=[ch])
 
 tempdir = tempfile.mkdtemp()
 
