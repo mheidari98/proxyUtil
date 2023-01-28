@@ -26,7 +26,7 @@ def Checker(shadowList, localPort, testDomain, timeOut):
     for ss_url in shadowList :
         server, server_port, method, password, plugin, plugin_opts, tag = parse_ss_withPlugin(ss_url)
 
-        if not isValidIP(server) and not getIP(server):
+        if not isIPv4(server) and not isIPv6(server) and not getIP(server):
             continue
         
         cmd = ssURI2sslocal(ss_url, localPort, pidPath)
