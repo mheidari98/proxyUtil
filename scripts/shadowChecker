@@ -6,9 +6,11 @@
 import argparse
 import concurrent.futures
 import tempfile
-from modules.myUtil import *
+from proxyUtil import *
 
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+ch = logging.StreamHandler()
+ch.setFormatter(CustomFormatter())
+logging.basicConfig(level=logging.ERROR, handlers=[ch])
 
 tempdir = tempfile.mkdtemp()
 
@@ -24,7 +26,7 @@ def Checker(shadowList, localPort, testDomain, timeOut):
     for ss_url in shadowList :
         server, server_port, method, password, plugin, plugin_opts, tag = parse_ss_withPlugin(ss_url)
 
-        if not isValidIP(server) and not getIP(server):
+        if not isIPv4(server) and not isIPv6(server) and not getIP(server):
             continue
         
         cmd = ssURI2sslocal(ss_url, localPort, pidPath)

@@ -5,9 +5,11 @@
 import argparse
 import concurrent.futures
 import tempfile
-from modules.myUtil import *
+from proxyUtil import *
 
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+ch = logging.StreamHandler()
+ch.setFormatter(CustomFormatter())
+logging.basicConfig(level=logging.ERROR, handlers=[ch])
 
 CORE = "v2ray"
 tempdir = tempfile.mkdtemp()
@@ -42,7 +44,7 @@ def Checker(proxyList, localPort, testDomain, timeOut):
                 logging.debug(f"Not Implemented {ParseResult.scheme}")
                 continue
         except Exception as err :
-            logging.error(err)
+            logging.error(f"{url} : {err}")
             continue
 
         configName = f"{tempdir}/config_{localPort}.json"

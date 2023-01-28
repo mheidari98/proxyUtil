@@ -38,7 +38,7 @@ trojan_scheme = "trojan://"
 
 proxyScheme = [vmess_scheme, vless_scheme, trojan_scheme, ssr_scheme, ss_scheme]
 
-dns = {
+dnsServers = {
     "dns": {
         "servers": [
             "1.1.1.1",
@@ -184,6 +184,7 @@ quiet_mode
 socks5  127.0.0.1 {LOCAL_PORT}
 """
 
+CLASH_SAMPLE_PATH = os.path.join(os.path.dirname(__file__), 'data', 'Clash-Template.yaml')
 
 def finder(cmd, spliter):
     return re.search(f"\s+{spliter}\s+(\S+)", cmd).group(1)
@@ -244,16 +245,6 @@ def is_json(myjson):
     except ValueError as e:
         return False
     return True
-
-
-def isValidIP(addr):
-    try:
-        #ipaddress.ip_address(addr)
-        socket.inet_aton(addr) 
-    except :
-        return False # Not legal
-    return True # legal
-
 
 def getIP(domain):
     try:
@@ -503,7 +494,7 @@ def mergeMultiDicts(*dicts):
 
 
 def createShadowConfig(ss_url, port=1080):
-    config = deepcopy( mergeMultiDicts(dns, inbounds, ssOut) )
+    config = deepcopy( mergeMultiDicts(dnsServers, inbounds, ssOut) )
     
     config['inbounds'][0]['port'] = port
     
@@ -520,7 +511,7 @@ def createShadowConfig(ss_url, port=1080):
 
 
 def createSsrConfig(ssr_url, localPort=1080):
-    config = deepcopy( mergeMultiDicts(dns, inbounds, ssrOut) )
+    config = deepcopy( mergeMultiDicts(dnsServers, inbounds, ssrOut) )
     ssr_parsed = parse_ssr(ssr_url)
     config['inbounds'][0]['port'] = localPort
     config['outbounds'][0]['settings']['servers'][0]['address']  = ssr_parsed['address']
@@ -535,7 +526,7 @@ def createSsrConfig(ssr_url, localPort=1080):
 
 
 def createVmessConfig(jsonLoad, port=1080):
-    config = deepcopy( mergeMultiDicts(dns, inbounds, vmessOut) )
+    config = deepcopy( mergeMultiDicts(dnsServers, inbounds, vmessOut) )
 
     config['inbounds'][0]['port'] = port
 
@@ -580,7 +571,8 @@ def createVmessConfig(jsonLoad, port=1080):
 
     if jsonLoad["tls"]:  #   "tls"
         config['outbounds'][0]["streamSettings"]["security"] = jsonLoad["tls"]
-        config['outbounds'][0]["streamSettings"]["tlsSettings"]["serverName"] = jsonLoad['sni']
+        if 'sni' in jsonLoad:
+            config['outbounds'][0]["streamSettings"]["tlsSettings"]["serverName"] = jsonLoad['sni']
     if "skip-cert-verify" in jsonLoad and jsonLoad["skip-cert-verify"]:
         config['outbounds'][0]["streamSettings"]["tlsSettings"]["allowInsecure"] = True
     
@@ -588,7 +580,7 @@ def createVmessConfig(jsonLoad, port=1080):
 
 
 def createTrojanConfig(loaded, localPort=1080):
-    config = deepcopy( mergeMultiDicts(dns, inbounds, trojanOut) )
+    config = deepcopy( mergeMultiDicts(dnsServers, inbounds, trojanOut) )
     
     trojan_parsed = parseTrojan(loaded)
     
@@ -608,6 +600,10 @@ def createTrojanConfig(loaded, localPort=1080):
         config['outbounds'][0]['streamSettings']['tlsSettings']["allowInsecure"] = True
         
     return config
+
+def clearScreen():
+    #console.print("\033c", end="")
+    os.system('cls' if os.name == 'nt' else 'clear')
 
 
 def set_proxychains(localPort=1080):
