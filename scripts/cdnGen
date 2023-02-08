@@ -27,8 +27,10 @@ cdn_url = {
 
 def main():
     parser = argparse.ArgumentParser(description="Generating vmess url with CDN IPs as address and our domain as host")
-    parser.add_argument("url", help="vmess link")
-    parser.add_argument("--cdn", choices=cdn_url.keys(), help="cdn name", required=True)
+    parser.add_argument("link", help="vmess link")
+    parser.add_argument("--cdn", choices=cdn_url.keys(), help="cdn name")
+    parser.add_argument("-f", "--file", help="file contains cdn IPs")
+    parser.add_argument("--url", help="url to get cdn IPs")
     parser.add_argument("-n", "--number", type=int, help="number of IP to generate (default: all)")
     parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
     parser.add_argument("-o", "--output", help="output file")
@@ -37,14 +39,25 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    req = requests.get(cdn_url[args.cdn])
-    if req.status_code != 200:
-        logging.error(f"Error to get {cdn_url[args.cdn]} : {req.status_code}")
-        exit(1)
+    if args.cdn or args.url :
+        cdnURL = args.url if args.url else cdn_url[args.cdn]
+        req = requests.get(cdnURL)
+        if req.status_code != 200:
+            logging.error(f"Error to get {cdnURL} : {req.status_code}")
+            exit(1)
+        cidrs = req.text.split()
+
+    elif args.file :
+        with open(args.file, 'r') as f :
+            cidrs = f.read().split()
 
     ip_list = []
-    for cidr in req.text.splitlines():
+    for cidr in cidrs:
         ip_list.extend([str(ip) for ip in ipaddress.IPv4Network(cidr).hosts()])
+
+    if not ip_list :
+        logging.error("Error to get CDN IPs")
+        exit(1)
     logging.debug(f"{args.cdn} Total IP: {len(ip_list)}")
 
     if args.number :
@@ -53,9 +66,9 @@ def main():
             exit(1)
         ip_list = random.sample(ip_list, args.number)
 
-    ParseResult = urllib.parse.urlparse(args.url)  # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
-    if ParseResult.scheme == "vmess" and isBase64(args.url[8:]):
-        jsonLoad = json.loads(base64Decode(args.url[8:]))
+    ParseResult = urllib.parse.urlparse(args.link)  # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
+    if ParseResult.scheme == "vmess" and isBase64(args.link[8:]):
+        jsonLoad = json.loads(base64Decode(args.link[8:]))
     else :
         logging.error("Error to parse proxy link")
         exit(1)
