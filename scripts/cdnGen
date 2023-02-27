@@ -23,7 +23,22 @@ logging.basicConfig(level=logging.INFO, handlers=[ch])
 cdn_url = { 
     'arvan'         : "https://www.arvancloud.ir/fa/ips.txt" , 
     'cloudflare'    : "https://www.cloudflare.com/ips-v4" ,
+    'CFplus'        : "https://raw.githubusercontent.com/mheidari98/CDNs-ip/main/Cloudflare_Organization.txt" ,
     }
+
+def parseVlessTrojan(ParseResult):
+    queryDict = dict(parse_qsl(ParseResult.query))
+    queryDict['scheme'] = ParseResult.scheme
+    if (res := re.search(f"^(.+)@(.+):(\d+)$", ParseResult.netloc)):
+        queryDict['pass'], queryDict['add'], queryDict['port'] = res.groups()
+    return queryDict
+
+
+def unparseVlessTrojan(queryDict):
+    part1 = f"{queryDict['scheme']}://{queryDict['pass']}@{queryDict['add']}:{queryDict['port']}"
+    part2 = urlencode({key:value for key, value in queryDict.items() if key not in ['scheme', 'pass','add', 'port']})
+    return f"{part1}?{part2}"
+
 
 def main():
     parser = argparse.ArgumentParser(description="Generating vmess url with CDN IPs as address and our domain as host")
@@ -69,13 +84,17 @@ def main():
     ParseResult = urllib.parse.urlparse(args.link)  # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
     if ParseResult.scheme == "vmess" and isBase64(args.link[8:]):
         jsonLoad = json.loads(base64Decode(args.link[8:]))
+        tls = 'tls'
+    elif ParseResult.scheme in ["vless", "trojan"] :
+        jsonLoad = parseVlessTrojan(ParseResult)
+        tls = 'security'
     else :
         logging.error("Error to parse proxy link")
         exit(1)
 
     if ('host' not in jsonLoad) or (not jsonLoad['host']) :
         jsonLoad['host'] = jsonLoad['add']
-    if 'tls' in jsonLoad and jsonLoad['tls']=='tls' :
+    if tls in jsonLoad and jsonLoad[tls]=='tls' :
         if 'sni' in jsonLoad and jsonLoad['sni'] :
             jsonLoad['host'] = jsonLoad['sni']
         else :
@@ -87,7 +106,10 @@ def main():
 
     for ip in ip_list:
         jsonLoad['add'] = ip
-        results.append( Create_vmess_url(jsonLoad) )
+        if ParseResult.scheme == "vmess" :
+            results.append( Create_vmess_url(jsonLoad) )
+        elif ParseResult.scheme in ["vless", "trojan"] :
+            results.append( unparseVlessTrojan(jsonLoad) )
 
     outputs = '\n'.join(results) 
     if args.output :
