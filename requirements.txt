@@ -15,7 +15,7 @@ httpx==0.23.3
 hyperframe==6.0.1
 idna==3.4
 jsonlines==3.1.0
-markdown-it-py==2.1.0
+markdown-it-py==2.2.0
 mdurl==0.1.2
 numpy==1.23.4
 psutil==5.9.2
