@@ -23,7 +23,7 @@ DIRECT_RULE_SET = [
     # name, behavior, url
     ("iran", "classical", "https://github.com/SamadiPour/iran-hosted-domains/releases/latest/download/clash_rules.yaml"),
     ("private", "domain", "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/private.txt"),
-    ("lancidr", "ipcidr", "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/lancidr.txt"),
+    #("lancidr", "ipcidr", "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/lancidr.txt"),
 ]
 
 REJECT_RULE_SET = [
