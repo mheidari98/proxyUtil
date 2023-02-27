@@ -157,11 +157,6 @@ trojanOut = {
             "streamSettings": {
                 "network": "tcp",
                 "security": "tls",
-                "tcpSettings": {
-                    "header": {
-                        "type": "none"
-                    }
-                },
                 "tlsSettings": {
                     "allowInsecure": True,
                     "serverName": ""
@@ -395,6 +390,25 @@ def parseTrojan(loaded):
     return queryDict
 
 
+def extractIPs(proxy):
+    try:
+        ParseResult = urllib.parse.urlparse(proxy)  # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
+        if ParseResult.scheme == 'ss':
+            return parse_ss_withPlugin(proxy)[0]
+        elif ParseResult.scheme == 'ssr':
+            return parse_ssr(proxy)['address']
+        elif ParseResult.scheme == 'vmess':
+            return json.loads(base64Decode(proxy[8:]))['add']
+        elif ParseResult.scheme == 'vless':
+            return parseVless(ParseResult)['add']
+        elif ParseResult.scheme == 'trojan':
+            return parseTrojan(ParseResult)['address']
+        else:
+            logging.error(f"Invalid proxy: {proxy}")
+    except Exception as err :
+        logging.error(f"Invalid proxy: {proxy} ({err})")
+
+
 def killProcess(processName, cmdline=None):
     for p in psutil.process_iter(attrs=['pid', 'name']):
         if processName in p.name() and (cmdline is None or cmdline in p.cmdline()):
@@ -589,9 +603,21 @@ def createTrojanConfig(loaded, localPort=1080):
     config['outbounds'][0]['settings']['servers'][0]['address']  = trojan_parsed['address']
     config['outbounds'][0]['settings']['servers'][0]['port']     = int(trojan_parsed['port'])
     config['outbounds'][0]['settings']['servers'][0]['password'] = trojan_parsed['password']
- 
-    if 'network' in trojan_parsed :
-        config['outbounds'][0]['streamSettings']["network"] = trojan_parsed['network']
+    
+    if 'type' not in trojan_parsed:
+        trojan_parsed['type'] = "tcp"
+        #config['outbounds'][0]['streamSettings']['tcpSettings'] = {"header":{"type":"none"}}
+    elif trojan_parsed['type'] =="ws": 
+        config['outbounds'][0]['streamSettings']["network"] = "ws"
+        if 'host' in trojan_parsed :
+            config['outbounds'][0]['streamSettings']['wsSettings'] = {"headers":{"Host":trojan_parsed['host']} ,
+                                                                      "path":trojan_parsed['path']}
+    elif trojan_parsed['type'] =="grpc":
+        config['outbounds'][0]['streamSettings']["network"] = "grpc"
+        config['outbounds'][0]['streamSettings']['grpcSettings'] = {"serviceName":trojan_parsed['serviceName']}
+    else:
+        config['outbounds'][0]['streamSettings']["network"] = trojan_parsed['type']
+
     if 'security' in trojan_parsed :
         config['outbounds'][0]['streamSettings']["security"] = trojan_parsed['security']
     if 'sni' in trojan_parsed :
@@ -600,6 +626,7 @@ def createTrojanConfig(loaded, localPort=1080):
         config['outbounds'][0]['streamSettings']['tlsSettings']["allowInsecure"] = True
         
     return config
+
 
 def clearScreen():
     #console.print("\033c", end="")
