@@ -27,7 +27,7 @@ cdn_url = {
     }
 
 def parseVlessTrojan(ParseResult):
-    queryDict = dict(parse_qsl(ParseResult.query))
+    queryDict = { q.split('=', 1)[0] : q.split('=', 1)[1] for q in ParseResult.query.split('&') }
     queryDict['scheme'] = ParseResult.scheme
     if (res := re.search(f"^(.+)@(.+):(\d+)$", ParseResult.netloc)):
         queryDict['pass'], queryDict['add'], queryDict['port'] = res.groups()
