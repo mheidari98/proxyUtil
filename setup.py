@@ -50,6 +50,7 @@ setup(
         path.join("scripts", "connectMe"),
         path.join("scripts", "dnsChecker"),
         path.join("scripts", "ipExtractor"),
+        path.join("scripts", "cfRecorder"),
         path.join("scripts", "shadowChecker"),
         path.join("scripts", "sslocal2ssURI"),
         path.join("scripts", "ssURI2sslocal"),
