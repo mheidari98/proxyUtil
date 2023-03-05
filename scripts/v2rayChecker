@@ -141,7 +141,6 @@ def main():
         if not args.skip_updates:
             logging.debug(f"nodes uptdate status: {update_nodes()}")
         cfg=nodes_loader()
-        print(cfg)
         logging.debug(f"nodes loaded: {len(cfg['URLS'])}")
         lines.update( ScrapURL(cfg['URLS'],to=args.timeout) )
 

@@ -26,7 +26,7 @@ import yaml
 
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 
-nodes_source=""
+nodes_source="https://raw.githubusercontent.com/oeNrM/proxyUtil/main/proxyUtil/data/nodes.yml"
 
 PROXIES={
     'http': 'socks5h://127.0.0.1:{LOCAL_PORT}',
