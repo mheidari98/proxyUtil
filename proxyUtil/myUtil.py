@@ -21,9 +21,12 @@ import numpy as np
 import psutil
 import requests
 import urllib3
-from ruamel import yaml
+import yaml
+# from ruamel import yaml
 
 logging.getLogger("urllib3").setLevel(logging.ERROR)
+
+nodes_source=""
 
 PROXIES={
     'http': 'socks5h://127.0.0.1:{LOCAL_PORT}',
@@ -180,6 +183,19 @@ socks5  127.0.0.1 {LOCAL_PORT}
 """
 
 CLASH_SAMPLE_PATH = os.path.join(os.path.dirname(__file__), 'data', 'Clash-Template.yaml')
+NODES_SAMPLE_PATH = os.path.join(os.path.dirname(__file__), 'data', 'nodes.yml')
+
+def update_nodes()->bool:
+    r=requests.get(nodes_source)
+    if r.status_code==200:
+        with open(NODES_SAMPLE_PATH,"w") as fo:
+            fo.write(r.text)
+        return True
+    return False
+
+def nodes_loader():
+    with open(NODES_SAMPLE_PATH) as ymlfile:
+        return(yaml.load(ymlfile,Loader=yaml.FullLoader))
 
 def finder(cmd, spliter):
     return re.search(f"\s+{spliter}\s+(\S+)", cmd).group(1)
@@ -472,20 +488,19 @@ def parseContent(content, patterns=proxyScheme):
     return newProxy
 
 
-def ScrapURL(url, patterns=proxyScheme):
+def ScrapURL(url, to=4,patterns=proxyScheme):
     newProxy = []
-    try:
-        res = requests.get(url, timeout=4)
-    except Exception as e:
-        logging.debug("Exception occurred", exc_info=True)
-        logging.error(f"Can't reach {url}")
-        return newProxy
-    
-    if (res.status_code//100) == 2:
-        newProxy = parseContent(res.text.strip(), patterns)
-        logging.info(f"Got {len(newProxy)} new proxy from {url}")
-    else:
-        logging.error(f"Can't get {url} , status code = {res.status_code}")
+    for x in url:
+        try:
+            res = requests.get(x, timeout=to)
+            if (res.status_code//100) == 2:
+                newProxy = parseContent(res.text.strip(), patterns)
+                logging.info(f"Got {len(newProxy)} new proxy from {x}")
+            else:
+                logging.error(f"Can't get {x} , status code = {res.status_code}")
+        except Exception as e:
+            logging.debug("Exception occurred", exc_info=True)
+            logging.error(f"Can't reach {x}")
     return newProxy
 
 

@@ -88,6 +88,7 @@ def main():
     parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
     parser.add_argument('-vv', '--debug', help="debug log", action='store_true', default=False)
     parser.add_argument('-T', '--threads', help="threads number, default is 10", default=10, type=int)
+    parser.add_argument('-s', '--skip-updates', help="skip the updates nodes", action='store_true', default=False)
     parser.add_argument('-x', '--xray', help="use xray core instead v2ray", action='store_true', default=False)
     parser.add_argument('--t2exec', help="time to execute v2ray, default is 1", default=1, type=float)
     parser.add_argument('--t2kill', help="time to kill v2ray, default is 0.1", default=0.1, type=float)
@@ -137,7 +138,12 @@ def main():
         lines.update( ScrapURL(args.url) )
 
     if args.free :
-        lines.update( ScrapURL('https://raw.githubusercontent.com/freefq/free/master/v2') )
+        if not args.skip_updates:
+            logging.debug(f"nodes uptdate status: {update_nodes()}")
+        cfg=nodes_loader()
+        print(cfg)
+        logging.debug(f"nodes loaded: {len(cfg['URLS'])}")
+        lines.update( ScrapURL(cfg['URLS'],to=args.timeout) )
 
     if args.stdin :
         lines.update( parseContent(sys.stdin.read()) )
