@@ -494,7 +494,7 @@ def ScrapURL(url, to=4,patterns=proxyScheme):
         try:
             res = requests.get(x, timeout=to)
             if (res.status_code//100) == 2:
-                newProxy = parseContent(res.text.strip(), patterns)
+                newProxy += parseContent(res.text.strip(), patterns)
                 logging.info(f"Got {len(newProxy)} new proxy from {x}")
             else:
                 logging.error(f"Can't get {x} , status code = {res.status_code}")
