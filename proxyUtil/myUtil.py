@@ -464,10 +464,11 @@ def parseContent(content, patterns=proxyScheme):
     if is_json(content):
         newProxy = processShadowJson(content)
     else: 
-        if isBase64(content):
-            lines = base64Decode(content).splitlines()
-        else :
-            lines = content.splitlines()
+        lines = []
+        for line in content.splitlines():
+            if isBase64(line):
+                line = base64Decode(line)
+            lines.extend( line.split() )
         newProxy = checkPatternsInList(lines, patterns)
     return newProxy
 
