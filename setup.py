@@ -54,14 +54,14 @@ setup(
         path.join("scripts", "shadowChecker"),
         path.join("scripts", "sslocal2ssURI"),
         path.join("scripts", "ssURI2sslocal"),
-        path.join("scripts", "v2rayChecker"),
+        #path.join("scripts", "v2rayChecker"),
     ],
 
-    # entry_points={
-    #     "console_scripts": [
-    #         "proxyUtil = proxyUtil.__main__:main",
-    #     ]
-    # },
+    entry_points={
+        "console_scripts": [
+            "v2rayChecker = proxyUtil.v2rayChecker:main",
+        ]
+    },
     
     classifiers=[
         # https://pypi.org/classifiers
