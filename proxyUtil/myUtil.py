@@ -636,6 +636,7 @@ def clearScreen():
 
 def set_proxychains(localPort=1080):
     pchPath = os.path.expanduser('~/.proxychains/proxychains.conf')
+    os.makedirs(os.path.dirname(pchPath), exist_ok=True)
     if os.path.exists(pchPath):
         os.system(f"cp {pchPath} {pchPath}.bak")
     with open(pchPath, "w") as f:
