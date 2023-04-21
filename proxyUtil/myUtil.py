@@ -1,18 +1,23 @@
 
 import base64
+import hashlib
 import itertools
 import json
 import logging
 import os
+import platform
 import re
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import time
 import urllib
+import urllib.request
 import uuid
+import zipfile
 from copy import deepcopy
 from urllib.parse import (parse_qs, parse_qsl, quote, quote_plus, unquote,
                           urldefrag, urlencode, urljoin, urlparse, urlsplit,
@@ -697,4 +702,71 @@ def installDocker():
         except PermissionError:
             sys.exit("ًroot privileges required")
     logging.info("Docker Installed")
+
+
+def getSHA256(fileName):
+    with open(fileName, 'rb') as f:
+        data = f.read()
+    return hashlib.sha256(data).hexdigest()
+
+
+def get_OS():
+    os = platform.system()
+    if os == 'Linux':
+        return "linux"
+    elif os == 'Darwin':
+        return "macos"
+    elif os == 'Windows':
+        return "windows"
+    else:
+        logging.error("Unsupported OS")
+        sys.exit(1)
+
+
+def get_arch():
+    arch = platform.machine()
+    if arch == 'x86_64':
+        return "64"
+    elif arch == 'i386' or arch == 'i686':
+        return "32"
+    elif arch == 'aarch64':
+        return "arm64-v8a"
+    elif arch == 'armv7l':
+        return "arm32-v7a"
+    else:
+        logging.error("Unsupported Architecture")
+        sys.exit(1)
+
+
+def chmodX(path):
+    if get_OS() == "windows":
+        return
+    st = os.stat(path)
+    os.chmod(path, st.st_mode | stat.S_IEXEC)
+
+
+def downloadZray(acc, repo):
+    TAG = requests.get(f"https://api.github.com/repos/{acc}/{repo}-core/releases/latest").json()['tag_name']
+
+    ZRAY_FILE = f"{repo}-{get_OS()}-{get_arch()}.zip"
+    ZRAY_URL = f"https://github.com/{acc}/{repo}-core/releases/download/{TAG}/{ZRAY_FILE}"
+    DGST_FILE = f"{ZRAY_FILE}.dgst"
+    DGST_URL = f"https://github.com/{acc}/{repo}-core/releases/download/{TAG}/{DGST_FILE}"
+    ZIP_FILE = f"{repo}.zip"
+    
+    urllib.request.urlretrieve(ZRAY_URL, ZIP_FILE)
+    logging.info(f"Downloaded {ZRAY_FILE}")
+    r = requests.get(DGST_URL)
+    FILE_SHA256 = [line for line in r.content.splitlines() if line.startswith(b"SHA2-256")][0].decode().split()[1]
+    if getSHA256(ZIP_FILE) == FILE_SHA256 :
+        logging.info(f"SHA256 Check passed")
+        with zipfile.ZipFile(ZIP_FILE, 'r') as zip_ref:
+            zip_ref.extractall(repo)
+        os.remove(ZIP_FILE)
+        chmodX(f"{repo}/{repo}")
+    else:
+        logging.error(f"SHA256 Check failed")
+        logging.error(f"Expected: {FILE_SHA256}")
+        logging.error(f"Actual: {getSHA256(ZIP_FILE)}")
+        sys.exit(1)
 
