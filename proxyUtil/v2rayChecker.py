@@ -3,7 +3,8 @@
 #   https://www.v2ray.com/en/welcome/install.html
 #   sudo bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
 import argparse
-import concurrent.futures
+import concurrent.futures.thread
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import tempfile
 from proxyUtil import *
 
@@ -16,6 +17,7 @@ tempdir = tempfile.mkdtemp()
 time2exec = 1
 time2kill = 0.1
 ignoreWarning = False
+CTRL_C = False
 
 def Checker(proxyList, localPort, testDomain, timeOut):
     liveProxy = []
@@ -25,6 +27,8 @@ def Checker(proxyList, localPort, testDomain, timeOut):
     proxy['https'] = proxy['https'].format(LOCAL_PORT=localPort)
 
     for url in proxyList :
+        if CTRL_C :
+            break
         ParseResult = urllib.parse.urlparse(url)  # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
         try:
             if ParseResult.scheme == "ss" :
@@ -104,7 +108,7 @@ def main(argv=sys.argv):
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
     
-    global time2exec, time2kill, ignoreWarning
+    global time2exec, time2kill, ignoreWarning, CTRL_C
     time2exec = args.t2exec
     time2kill = args.t2kill
     ignoreWarning = args.ignore
@@ -158,14 +162,21 @@ def main(argv=sys.argv):
             openPort.append(port)
         port+=1
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=N) as executor:
-        results = executor.map(Checker  , split2Npart(lines, N)
-                                        , openPort
-                                        , itertools.repeat(args.domain, N)
-                                        , itertools.repeat(args.timeout, N) )
-    
-    
-    liveProxy = [*itertools.chain(*results)]
+    with ThreadPoolExecutor(max_workers=N) as executor:
+        futures = [
+            executor.submit(Checker, proxyList, localPort, args.domain, args.timeout) 
+                    for proxyList, localPort in zip(split2Npart(lines, N), openPort)
+            ]
+        try:
+            for future in as_completed(futures):
+                logging.debug("thread done!")
+        except KeyboardInterrupt:
+            CTRL_C = True
+            logging.debug("CTRL+C pressed")
+
+    liveProxy = []
+    for future in as_completed(futures):
+        liveProxy.extend( future.result() )
 
     liveProxy.sort(key=lambda x: x[1])
     with open(args.output, 'w') as f:
