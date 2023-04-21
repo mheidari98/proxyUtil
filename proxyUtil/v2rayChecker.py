@@ -12,7 +12,7 @@ ch = logging.StreamHandler()
 ch.setFormatter(CustomFormatter())
 logging.basicConfig(level=logging.ERROR, handlers=[ch])
 
-CORE = "v2ray"
+CORE = "xray"
 tempdir = tempfile.mkdtemp()
 time2exec = 1
 time2kill = 0.1
@@ -93,6 +93,7 @@ def main(argv=sys.argv):
     parser.add_argument('-vv', '--debug', help="debug log", action='store_true', default=False)
     parser.add_argument('-T', '--threads', help="threads number, default is 10", default=10, type=int)
     parser.add_argument('-x', '--xray', help="use xray core instead v2ray", action='store_true', default=False)
+    parser.add_argument('--v2ray', help="use v2ray core", action='store_true', default=False)
     parser.add_argument('--t2exec', help="time to execute v2ray, default is 1", default=1, type=float)
     parser.add_argument('--t2kill', help="time to kill v2ray, default is 0.1", default=0.1, type=float)
     parser.add_argument('--url', help="get proxy from url")
@@ -108,24 +109,35 @@ def main(argv=sys.argv):
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
     
-    global time2exec, time2kill, ignoreWarning, CTRL_C
+    global CORE, time2exec, time2kill, ignoreWarning, CTRL_C
     time2exec = args.t2exec
     time2kill = args.t2kill
     ignoreWarning = args.ignore
-    
-    if not is_tool('v2ray') and not args.xray:
-        logging.error("v2ray not found, please install v2ray first")
-        logging.error("\thttps://www.v2fly.org/en_US/guide/install.html")
-        exit(1)
 
-    if args.xray :
-        if is_tool('xray'):
-            global CORE
-            CORE = "xray"
-        else :
-            logging.error("xray not found, please install xray first")
-            logging.error("\thttps://github.com/XTLS/Xray-core#installation")
-            exit(1)
+    if args.v2ray :
+        CORE = shutil.which("v2ray", path=f"./v2ray:./xray:{os.environ['PATH']}")
+        if not CORE :
+            logging.error("v2ray not found!")
+            logging.error("you can install v2ray from https://www.v2fly.org/en_US/guide/install.html")
+            download = input("do you want to download v2ray now? [y/n]").strip() in ["yes", "y"]
+            if download :
+                downloadZray("v2fly", "v2ray")
+                CORE = shutil.which("v2ray", path=f"./v2ray:./xray:{os.environ['PATH']}")
+            else:
+                exit(1)
+    else :
+        CORE = shutil.which("xray", path=f"./v2ray:./xray:{os.environ['PATH']}")
+        if not CORE :
+            logging.error("xray not found!")
+            logging.error("you can install xray from https://github.com/XTLS/Xray-core#installation")
+            download = input("do you want to download xray now? [y/n]").strip() in ["yes", "y"]
+            if download :
+                downloadZray("XTLS", "xray")
+                CORE = shutil.which("xray", path=f"./v2ray:./xray:{os.environ['PATH']}")
+            else:
+                exit(1)
+
+    logging.info(f"using {CORE} core")
     
     lines = set()
     if args.file and os.path.isfile(args.file):
