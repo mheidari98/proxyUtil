@@ -725,7 +725,7 @@ def get_OS():
 
 def get_arch():
     arch = platform.machine()
-    if arch == 'x86_64':
+    if arch == 'x86_64' or arch == 'AMD64':
         return "64"
     elif arch == 'i386' or arch == 'i686':
         return "32"
