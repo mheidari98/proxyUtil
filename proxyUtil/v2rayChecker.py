@@ -4,8 +4,8 @@
 #   sudo bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
 import argparse
 import concurrent.futures.thread
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from proxyUtil import *
 
 ch = logging.StreamHandler()
@@ -13,11 +13,12 @@ ch.setFormatter(CustomFormatter())
 logging.basicConfig(level=logging.ERROR, handlers=[ch])
 
 CORE = "xray"
-tempdir = tempfile.mkdtemp()
 time2exec = 1
 time2kill = 0.1
 ignoreWarning = False
 CTRL_C = False
+tempdir = tempfile.mkdtemp()
+OS = get_OS()
 
 def Checker(proxyList, localPort, testDomain, timeOut):
     liveProxy = []
@@ -26,58 +27,36 @@ def Checker(proxyList, localPort, testDomain, timeOut):
     proxy['http'] = proxy['http'].format(LOCAL_PORT=localPort)
     proxy['https'] = proxy['https'].format(LOCAL_PORT=localPort)
 
+    runner = winRunCore if OS == "windows" else unixRunCore
+    killer = winKillCore if OS == "windows" else unixKillCore
+
     for url in proxyList :
         if CTRL_C :
             break
-        ParseResult = urllib.parse.urlparse(url)  # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
-        try:
-            if ParseResult.scheme == "ss" :
-                config = createShadowConfig(url, port=localPort)
-            elif ParseResult.scheme == "vmess" :
-                if isBase64(url[8:]):
-                    jsonLoad = json.loads(base64Decode(url[8:]))
-                    jsonLoad["protocol"] = "vmess"
-                    config = createVmessConfig(jsonLoad, port=localPort)
-                else :
-                    logging.debug("Not Implemented this type of vmess url")
-                    continue
-            elif ParseResult.scheme == "vless" :
-                config = createVmessConfig(parseVless(ParseResult), port=localPort)
-            elif ParseResult.scheme == "trojan" :
-                config = createTrojanConfig(ParseResult, localPort=localPort)
-            else :
-                logging.debug(f"Not Implemented {ParseResult.scheme}")
-                continue
-        except Exception as err :
-            logging.error(f"{url} : {err}")
+        
+        configName = createConfig(url, localPort, tempdir)
+        if configName is None :
             continue
-
-        configName = f"{tempdir}/config_{localPort}.json"
-        with open(configName, "w") as f:
-            json.dump(config, f)
-        logging.debug(f"config file {configName} created.")
-
-        proc = subprocess.Popen(f"{CORE} run -config {configName}", stdout=subprocess.PIPE, 
-                                shell=True, preexec_fn=os.setsid) 
+        
+        proc = runner(CORE, configName)
         time.sleep(time2exec) 
 
         ping = is_alive(testDomain, proxy, timeOut)
         if ping:
             if ignoreWarning :
+                logging.warning(f"[{'live'}] with ping={ping}")
                 liveProxy.append((url, ping))
-            try :
-                # http://httpbin.org/ip     http://ip-api.com/json    https://api.ipify.org
-                result = json.loads(requests.get('http://ip-api.com/json/', proxies=proxy, timeout = timeOut).content)
-                logging.info(f"[live] ip={result['query']} @ {result['country']} ping={ping}")
-                if not ignoreWarning :
+            else:
+                ip, country = getIPnCountry(proxy, timeOut)
+                if ip is None :
+                    logging.warning(f"[{'live'}] with ping={ping}")
+                else :
+                    logging.info(f"[live] ip={ip} @ {country} ping={ping}")
                     liveProxy.append((url, ping))
-            except Exception as x:
-                logging.warning(f"[{'failed'}] with ping={ping}")
-                pass
         else :
             logging.debug(f"[dead] Not alive")
 
-        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)  # Send the signal to all the process groups
+        killer(proc)
         time.sleep(time2kill)
 
     return liveProxy
@@ -92,15 +71,16 @@ def main(argv=sys.argv):
     parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
     parser.add_argument('-vv', '--debug', help="debug log", action='store_true', default=False)
     parser.add_argument('-T', '--threads', help="threads number, default is 10", default=10, type=int)
+    parser.add_argument('-n', '--number', help="number of proxy to check", type=int)
     parser.add_argument('-x', '--xray', help="use xray core instead v2ray", action='store_true', default=False)
-    parser.add_argument('--v2ray', help="use v2ray core", action='store_true', default=False)
+    parser.add_argument('-c', '--core', help="select core from [v2ray, xray]", choices=["v2ray", "xray", "wxray"], default="xray")
     parser.add_argument('--t2exec', help="time to execute v2ray, default is 1", default=1, type=float)
     parser.add_argument('--t2kill', help="time to kill v2ray, default is 0.1", default=0.1, type=float)
     parser.add_argument('--url', help="get proxy from url")
     parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
     parser.add_argument('--stdin', help="get proxy from stdin", action='store_true', default=False)
     parser.add_argument('--reuse', help="reuse last checked proxy", action='store_true', default=False)
-    parser.add_argument('--ignore', help="ignore proxy with warning", action='store_true', default=False)
+    parser.add_argument('-i', '--ignore', help="ignore proxy with warning", action='store_true', default=False)
     parser.add_argument('-o', '--output', help="output file", default='sortedProxy.txt')
     args = parser.parse_args(argv[1:])
     
@@ -114,28 +94,25 @@ def main(argv=sys.argv):
     time2kill = args.t2kill
     ignoreWarning = args.ignore
 
-    if args.v2ray :
-        CORE = shutil.which("v2ray", path=f"./v2ray:./xray:{os.environ['PATH']}")
-        if not CORE :
-            logging.error("v2ray not found!")
+    os.environ["PATH"] += os.pathsep + os.path.join('.', 'xray')
+    os.environ["PATH"] += os.pathsep + os.path.join('.', 'v2ray')
+
+    CORE = shutil.which(args.core)
+    if not CORE :
+        logging.error(f"{args.core} not found!")
+        if args.core == "v2ray" :
             logging.error("you can install v2ray from https://www.v2fly.org/en_US/guide/install.html")
-            download = input("do you want to download v2ray now? [y/n]").strip() in ["yes", "y"]
-            if download :
-                downloadZray("v2fly", "v2ray")
-                CORE = shutil.which("v2ray", path=f"./v2ray:./xray:{os.environ['PATH']}")
-            else:
-                exit(1)
-    else :
-        CORE = shutil.which("xray", path=f"./v2ray:./xray:{os.environ['PATH']}")
-        if not CORE :
-            logging.error("xray not found!")
+        else:
             logging.error("you can install xray from https://github.com/XTLS/Xray-core#installation")
-            download = input("do you want to download xray now? [y/n]").strip() in ["yes", "y"]
-            if download :
-                downloadZray("XTLS", "xray")
-                CORE = shutil.which("xray", path=f"./v2ray:./xray:{os.environ['PATH']}")
+        download = input("do you want to download it now? [y/n]").strip() in ["yes", "y"]
+        if download :
+            if args.core == "v2ray" :
+                downloadZray("v2fly", "v2ray")
             else:
-                exit(1)
+                downloadZray("XTLS", "xray")
+            CORE = shutil.which(args.core)
+        else:
+            exit(1)
 
     logging.info(f"using {CORE} core")
     
@@ -159,6 +136,8 @@ def main(argv=sys.argv):
         lines.update( parseContent(sys.stdin.read()) )
     
     lines = list(lines)
+    if args.number :
+        lines = random.sample(lines, min(args.number, len(lines)))
     logging.info(f"We have {len(lines)} proxy to check")
     
     if not lines:
