@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import platform
+import random
 import re
 import shutil
 import signal
@@ -712,6 +713,7 @@ def getSHA256(fileName):
 
 def get_OS():
     os = platform.system()
+    logging.debug(f"OS: {os}")
     if os == 'Linux':
         return "linux"
     elif os == 'Darwin':
@@ -725,6 +727,7 @@ def get_OS():
 
 def get_arch():
     arch = platform.machine()
+    logging.debug(f"Architecture: {arch}")
     if arch == 'x86_64' or arch == 'AMD64':
         return "64"
     elif arch == 'i386' or arch == 'i686':
@@ -769,4 +772,65 @@ def downloadZray(acc, repo):
         logging.error(f"Expected: {FILE_SHA256}")
         logging.error(f"Actual: {getSHA256(ZIP_FILE)}")
         sys.exit(1)
+
+
+def createConfig(url, localPort, path):
+    ParseResult = urllib.parse.urlparse(url)  # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
+    try:
+        if ParseResult.scheme == "ss" :
+            config = createShadowConfig(url, port=localPort)
+        elif ParseResult.scheme == "vmess" :
+            if isBase64(url[8:]):
+                jsonLoad = json.loads(base64Decode(url[8:]))
+                jsonLoad["protocol"] = "vmess"
+                config = createVmessConfig(jsonLoad, port=localPort)
+            else :
+                logging.debug("Not Implemented this type of vmess url")
+                return None
+        elif ParseResult.scheme == "vless" :
+            config = createVmessConfig(parseVless(ParseResult), port=localPort)
+        elif ParseResult.scheme == "trojan" :
+            config = createTrojanConfig(ParseResult, localPort=localPort)
+        else :
+            logging.debug(f"Not Implemented {ParseResult.scheme}")
+            return None
+    except Exception as err :
+        logging.error(f"{url} : {err}")
+        return None
+
+    configName = os.path.join(path, f"config_{localPort}.json")
+    with open(configName, "w") as f:
+        json.dump(config, f)
+    logging.debug(f"config file {configName} created.")
+    return configName
+
+
+def winRunCore(CORE, configName):
+    proc = subprocess.Popen(f"{CORE} run -config {configName}", stdout=subprocess.PIPE)
+    return proc
+
+
+def unixRunCore(CORE, configName):
+    proc = subprocess.Popen(f"{CORE} run -config {configName}", stdout=subprocess.PIPE, 
+                            shell=True, preexec_fn=os.setsid) 
+    return proc
+
+
+def winKillCore(proc):
+    proc.kill()  # subprocess.call(f"TASKKILL /F /PID {proc.pid} /T")
+    return
+
+
+def unixKillCore(proc):
+    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)  # Send the signal to all the process groups
+    return
+
+
+def getIPnCountry(proxy, timeOut):
+    try :
+        # http://httpbin.org/ip     http://ip-api.com/json    https://api.ipify.org
+        result = json.loads(requests.get('http://ip-api.com/json/', proxies=proxy, timeout = timeOut).content)
+        return result['query'], result['country']
+    except Exception as x:
+        return None, None
 
