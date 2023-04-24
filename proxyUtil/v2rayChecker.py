@@ -43,7 +43,7 @@ def Checker(proxyList, localPort, testDomain, timeOut):
 
         ping = is_alive(testDomain, proxy, timeOut)
         if ping:
-            if ignoreWarning :
+            if not ignoreWarning :
                 logging.warning(f"[{'live'}] with ping={ping}")
                 liveProxy.append((url, ping))
             else:
@@ -74,13 +74,13 @@ def main(argv=sys.argv):
     parser.add_argument('-n', '--number', help="number of proxy to check", type=int)
     parser.add_argument('-x', '--xray', help="use xray core instead v2ray", action='store_true', default=False)
     parser.add_argument('-c', '--core', help="select core from [v2ray, xray]", choices=["v2ray", "xray", "wxray"], default="xray")
-    parser.add_argument('--t2exec', help="time to execute v2ray, default is 1", default=1, type=float)
-    parser.add_argument('--t2kill', help="time to kill v2ray, default is 0.1", default=0.1, type=float)
+    parser.add_argument('--t2exec', help="time to execute core, default is 1", default=1, type=float)
+    parser.add_argument('--t2kill', help="time to kill core, default is 0.1", default=0.1, type=float)
     parser.add_argument('--url', help="get proxy from url")
     parser.add_argument('--free', help="get free proxy", action='store_true', default=False)
     parser.add_argument('--stdin', help="get proxy from stdin", action='store_true', default=False)
     parser.add_argument('--reuse', help="reuse last checked proxy", action='store_true', default=False)
-    parser.add_argument('-i', '--ignore', help="ignore proxy with warning", action='store_true', default=False)
+    parser.add_argument('-i', '--ignore', help="ignore proxy with warning", action='store_false', default=True)
     parser.add_argument('-o', '--output', help="output file", default='sortedProxy.txt')
     args = parser.parse_args(argv[1:])
     
@@ -130,7 +130,7 @@ def main(argv=sys.argv):
         lines.update( ScrapURL(args.url) )
 
     if args.free :
-        lines.update( ScrapURL('https://raw.githubusercontent.com/freefq/free/master/v2') )
+        lines.update( ScrapURL('https://raw.githubusercontent.com/mheidari98/.proxy/main/all') )
 
     if args.stdin :
         lines.update( parseContent(sys.stdin.read()) )
@@ -152,6 +152,7 @@ def main(argv=sys.argv):
         if not is_port_in_use(port):
             openPort.append(port)
         port+=1
+    logging.debug(f"open port: {openPort}")
     
     with ThreadPoolExecutor(max_workers=N) as executor:
         futures = [
@@ -163,7 +164,7 @@ def main(argv=sys.argv):
                 logging.debug("thread done!")
         except KeyboardInterrupt:
             CTRL_C = True
-            logging.debug("CTRL+C pressed")
+            logging.info("CTRL+C pressed")
 
     liveProxy = []
     for future in as_completed(futures):
