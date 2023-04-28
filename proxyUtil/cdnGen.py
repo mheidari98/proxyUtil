@@ -40,7 +40,7 @@ def unparseVlessTrojan(queryDict):
     return f"{part1}?{part2}"
 
 
-def main():
+def main(argv=sys.argv):
     parser = argparse.ArgumentParser(description="Generating vmess url with CDN IPs as address and our domain as host")
     parser.add_argument("link", help="vmess link")
     parser.add_argument("--cdn", choices=cdn_url.keys(), help="cdn name")
@@ -49,7 +49,7 @@ def main():
     parser.add_argument("-n", "--number", type=int, help="number of IP to generate (default: all)")
     parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
     parser.add_argument("-o", "--output", help="output file")
-    args = parser.parse_args()
+    args = parser.parse_args(argv[1:])
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)

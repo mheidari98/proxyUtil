@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %
 
 console = Console()
 
-def main():
+def main(argv=sys.argv):
     parser = argparse.ArgumentParser(description="DNS Checker")
     parser.add_argument("-d", "--domain", help="Domain to check (default: example.com)", default="example.com")
     parser.add_argument("-r", "--rr", help="Record type to check (default: A)", default="A", choices=RR)
@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--doh", help="check DNS over HTTPS", action="store_true", default=False)
     parser.add_argument("--dot", help="check DNS over TLS", action="store_true", default=False)
     parser.add_argument("--all", help="check all DNS over UDP, DoH and DoT", action="store_true", default=False)
-    args = parser.parse_args()
+    args = parser.parse_args(argv[1:])
 
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)

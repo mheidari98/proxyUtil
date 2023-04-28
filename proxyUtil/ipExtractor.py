@@ -16,7 +16,7 @@ ch.setFormatter(CustomFormatter())
 logging.basicConfig(level=logging.ERROR, handlers=[ch])
 
 
-def main():
+def main(argv=sys.argv):
     parser = argparse.ArgumentParser(description="Exctraction IP from shadowsocks, vmess, vless, trojan links")
     parser.add_argument("-f", "--file", help="file contain proxy")
     parser.add_argument('--stdin', help="get proxies from stdin", action='store_true', default=False)
@@ -24,7 +24,7 @@ def main():
     parser.add_argument('--sort', help="sort output", action='store_true', default=False)
     parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
     parser.add_argument('-o', '--output', help="output file")
-    args = parser.parse_args()
+    args = parser.parse_args(argv[1:])
 
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)

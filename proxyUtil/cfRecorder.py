@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, handlers=[ch])
 console = Console()
 
 
-def main():
+def main(argv=sys.argv):
     parser = argparse.ArgumentParser(description="Simple Cloudflare DNS Recorder")
     parser.add_argument("email", help="Cloudflare email")
     parser.add_argument("token", help="Cloudflare token")
@@ -37,7 +37,7 @@ def main():
     parser.add_argument("--stdin", help="Read the Ip(s) from stdin", action="store_true", default=False)
     parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv[1:])
 
     if args.verbose:
         table1 = Table(show_lines=True, show_header=True, header_style="bold magenta", 
