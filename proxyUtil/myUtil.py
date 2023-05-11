@@ -140,8 +140,8 @@ vmessOut = {
                 }
             },
             "mux": {
-                "enabled": True,
-                "concurrency": 8
+                "enabled": False,
+                "concurrency": -1
             }
         }
     ]
@@ -568,6 +568,9 @@ def createVmessConfig(jsonLoad, port=1080):
 
     if 'encryption' in jsonLoad:
         config['outbounds'][0]["settings"]["vnext"][0]["users"][0]["encryption"] = jsonLoad['encryption']
+
+    if 'flow' in jsonLoad:
+        config['outbounds'][0]["settings"]["vnext"][0]["users"][0]["flow"] = jsonLoad['flow']
     
     sec = jsonLoad["scy"] if 'scy' in jsonLoad else (jsonLoad['security'] if 'security' in jsonLoad else "auto" )
     if sec!="auto" :
@@ -592,7 +595,20 @@ def createVmessConfig(jsonLoad, port=1080):
 
     if jsonLoad["tls"]:  #   "tls"
         config['outbounds'][0]["streamSettings"]["security"] = jsonLoad["tls"]
-        if 'sni' in jsonLoad:
+        if jsonLoad["tls"] == "reality":
+            realitySettings = {}
+            if 'sni' in jsonLoad:
+                realitySettings["serverName"] = jsonLoad['sni']
+            if 'fp' in jsonLoad:
+                realitySettings["fingerprint"] = jsonLoad['fp']
+            if 'pbk' in jsonLoad:
+                realitySettings["publicKey"] = jsonLoad['pbk']
+            if 'sid' in jsonLoad:
+                realitySettings["shortId"] = jsonLoad['sid']
+            if 'spx' in jsonLoad:
+                realitySettings["spiderX"] = jsonLoad['spx']
+            config['outbounds'][0]["streamSettings"]["realitySettings"] = realitySettings
+        elif 'sni' in jsonLoad:
             config['outbounds'][0]["streamSettings"]["tlsSettings"]["serverName"] = jsonLoad['sni']
     if "skip-cert-verify" in jsonLoad and jsonLoad["skip-cert-verify"]:
         config['outbounds'][0]["streamSettings"]["tlsSettings"]["allowInsecure"] = True
@@ -680,7 +696,7 @@ def set_system_proxy(proxyHost="127.0.0.1", proxyPort=1080, proxyType="socks5", 
         with open(os.path.expanduser(file), "w") as f:
             f.writelines(lines)
         #os.system(f"source {file}")
-        logging.info("set proxy done!" if enable else "unset proxy done!")
+        logging.info("set system proxy done!" if enable else "unset proxy done!")
 
 
 def installDocker():
