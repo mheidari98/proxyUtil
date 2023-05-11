@@ -31,33 +31,9 @@ def ss_runner(ss_url, localPort):
 
 
 def v2ray_runner(url, localPort):
-    # <scheme>://<netloc>/<path>;<params>?<query>#<fragment>
-    ParseResult = urllib.parse.urlparse(url)  
-    try:
-        if ParseResult.scheme == "ss" :
-            config = createShadowConfig(url, port=localPort)
-        elif ParseResult.scheme == "vmess" :
-            if isBase64(url[8:]):
-                jsonLoad = json.loads(base64Decode(url[8:]))
-                config = createVmessConfig(jsonLoad, port=localPort)
-            else :
-                logging.error("Not Implemented this type of vmess url")
-                return
-        elif ParseResult.scheme == "vless" :
-            config = createVmessConfig(parseVless(ParseResult), port=localPort)
-        elif ParseResult.scheme == "trojan" :
-            config = createTrojanConfig(ParseResult, localPort=localPort)
-        else :
-            logging.error(f"Not Implemented {ParseResult.scheme}")
-            return
-    except Exception as err :
-        logging.error(err)
+    configName = createConfig(url, localPort, tempdir)
+    if configName is None :
         return
-    #print(json.dumps(config, indent=4))
-    configName = f"{tempdir}/config.json"
-    with open(configName, "w") as f:
-        json.dump(config, f)
-    logging.debug(f"config file {configName} created.")
 
     cmd = f"{CORE} run -config {configName}" 
     logging.info(f"Running {cmd}")
@@ -80,8 +56,8 @@ def main():
     parser = argparse.ArgumentParser(description="Simple proxy client for ss/v2ray/trojan")
     parser.add_argument("link", help="proxy link")
     parser.add_argument("-l", "--lport", help="start local port, default is 1080", default=1080, type=int)
-    parser.add_argument("--v2ray", help="use v2ray-core", action="store_true")
-    parser.add_argument("--ss", help="use shadowsocks-libev", action="store_true")
+    parser.add_argument('-c', '--core', help="select core from [v2ray, xray, shadowsocks-libev]", 
+                                        choices=["xray", "v2ray", "ss", "wxray"], default="xray")
     parser.add_argument("--proxychains", help="set proxychains", action="store_true")
     parser.add_argument("--system", help="set system proxy", action="store_true")
     args = parser.parse_args()
@@ -102,22 +78,37 @@ def main():
     if args.system:
         set_system_proxy(proxyHost="127.0.0.1", proxyPort=args.lport, enable=True)
 
-    if args.ss and args.link.startswith("ss://"):
+    if args.core == "ss" and args.link.startswith("ss://"):
         if not is_tool('ss-local'):
             logging.error("ss-local not found, please install shadowsocks client first")
             logging.error("\thttps://github.com/shadowsocks/shadowsocks-libev")
             return
         ss_runner(args.link, args.lport)
-        return
-
-    elif args.v2ray or (not is_tool('xray')) :
-        if not is_tool('v2ray'):
-            logging.error("v2ray not found, please install v2ray-core first")
-            logging.error("\thttps://github.com/v2fly/v2ray-core")
-            return
+    else :
         global CORE
-        CORE = "v2ray"
-    v2ray_runner(args.link, args.lport)
+        os.environ["PATH"] += os.pathsep + os.path.join('.', 'xray')
+        os.environ["PATH"] += os.pathsep + os.path.join('.', 'v2ray')
+
+        CORE = shutil.which(args.core)
+        if not CORE :
+            logging.error(f"{args.core} not found!")
+            if args.core == "v2ray" :
+                logging.error("you can install v2ray from https://www.v2fly.org/en_US/guide/install.html")
+            else:
+                logging.error("you can install xray from https://github.com/XTLS/Xray-core#installation")
+            download = input("do you want to download it now? [y/n]").strip() in ["yes", "y"]
+            if download :
+                if args.core == "v2ray" :
+                    downloadZray("v2fly", "v2ray")
+                else:
+                    downloadZray("XTLS", "xray")
+                CORE = shutil.which(args.core)
+            else:
+                exit(1)
+
+        logging.info(f"using {CORE} core")
+        
+        v2ray_runner(args.link, args.lport)
 
     if args.system:
         set_system_proxy(enable=False)
