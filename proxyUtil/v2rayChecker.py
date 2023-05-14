@@ -171,7 +171,7 @@ def main(argv=sys.argv):
         liveProxy.extend( future.result() )
 
     liveProxy.sort(key=lambda x: x[1])
-    with open(args.output, 'w') as f:
+    with open(args.output, 'w', encoding="utf-8") as f:
         for ss_url in liveProxy:
             f.write(f"{ss_url[0]}\n")
 
