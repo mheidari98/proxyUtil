@@ -2,7 +2,7 @@
 # -*- coding=utf-8 -*-
 
 from os import path
-from setuptools import find_packages, setup
+from setuptools import find_namespace_packages, setup
 
 proj_dir = path.dirname(path.realpath(__file__))
 about_file = path.join(proj_dir, "proxyUtil", "__version__.py")
@@ -30,7 +30,8 @@ setup(
 
     license=about["__license__"],
 
-    packages=find_packages(), # ['proxyUtil']
+    #packages=find_packages(), # ['proxyUtil']
+    packages=find_namespace_packages(exclude=["scripts"]),
 
     include_package_data=True,
     #package_data={'': ['data/*']},
