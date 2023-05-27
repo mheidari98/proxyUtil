@@ -72,6 +72,7 @@ def main(argv=sys.argv):
     parser.add_argument('-vv', '--debug', help="debug log", action='store_true', default=False)
     parser.add_argument('-T', '--threads', help="threads number, default is 10", default=10, type=int)
     parser.add_argument('-n', '--number', help="number of proxy to check", type=int)
+    parser.add_argument('-s', '--shuffle', help="shuffle proxies", action='store_true', default=False)
     parser.add_argument('-x', '--xray', help="use xray core instead v2ray", action='store_true', default=False)
     parser.add_argument('-c', '--core', help="select core from [v2ray, xray]", choices=["v2ray", "xray", "wxray"], default="xray")
     parser.add_argument('--t2exec', help="time to execute core, default is 1", default=1, type=float)
@@ -136,8 +137,12 @@ def main(argv=sys.argv):
         lines.update( parseContent(sys.stdin.read()) )
     
     lines = list(lines)
+
+    if args.shuffle :
+        random.shuffle(lines)
+
     if args.number :
-        lines = random.sample(lines, min(args.number, len(lines)))
+        lines = lines[:args.number]
     logging.info(f"We have {len(lines)} proxy to check")
     
     if not lines:
