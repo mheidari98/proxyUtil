@@ -389,7 +389,8 @@ def parseVless(loaded):
 
 def parseTrojan(loaded):
     queryDict = dict(parse_qsl(loaded.query))
-    if (res := re.search(f"^(.+)@(.+):(\d+)$", loaded.netloc)):
+    res = re.search(f"^(.+)@(.+):(\d+)$", loaded.netloc)
+    if res:
         queryDict['password'], queryDict['address'], queryDict['port'] = res.groups()
     else:
         raise Exception("Wrong Trojan URI") 
