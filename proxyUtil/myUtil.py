@@ -496,6 +496,46 @@ def ScrapURL(url, patterns=proxyScheme):
     return newProxy
 
 
+def tagChanger(url, tag="4MahsaAmini"):
+    ParseResult = urllib.parse.urlparse(url) 
+    if ParseResult.scheme == "ss" :
+        #return Create_ss_url(*parse_ss(url))+f"#{tag}"
+        return Create_ss_url_withPlugin( *parse_ss_withPlugin(url)[:6], tag )
+    
+    elif ParseResult.scheme == "ssr" :
+        url = f"ssr://{base64Decode(url[6:])}"
+        params = {'remarks': base64.urlsafe_b64encode(tag.encode())}
+        url_parts = list(urlparse(url))
+        query = dict(parse_qsl(url_parts[4]))
+        query.update(params)
+        url_parts[4] = urlencode(dict(sorted(query.items())))
+        return f"ssr://{base64.urlsafe_b64encode(urlunparse(url_parts)[6:].encode()).decode()}"
+    
+    elif ParseResult.scheme == "vmess" and isBase64(url[8:]):
+        jsonLoad = json.loads(base64Decode(url[8:]))
+        jsonLoad['ps'] = tag
+        return "vmess://"+ base64.b64encode(json.dumps(dict(sorted(jsonLoad.items()))).encode()).decode()
+    
+    elif ParseResult.scheme in ["vless", "trojan"]:
+        #return urldefrag(url).url+f"#{tag}"
+        return ParseResult._replace(fragment=tag).geturl()
+    
+    return url
+
+
+def tagsChanger(urls, tag="4MahsaAmini", withCnt=False):
+    lines = []
+    newTAG = tag
+    for i, url in enumerate(urls):
+        try:
+            if withCnt:
+                newTAG = f"{tag}-{i}"
+            lines.append( tagChanger(url, newTAG) ) 
+        except:
+            pass
+    return lines
+
+
 def split2Npart(a, n):
     k, m = divmod(len(a), n)
     return (a[i*k+min(i, m):(i+1)*k+min(i+1, m)] for i in range(n))
