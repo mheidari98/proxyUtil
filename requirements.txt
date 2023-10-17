@@ -31,4 +31,4 @@ ruamel.yaml==0.17.21
 ruamel.yaml.clib==0.2.7
 sniffio==1.3.0
 soupsieve==2.3.2.post1
-urllib3==1.26.12
+urllib3==1.26.18
