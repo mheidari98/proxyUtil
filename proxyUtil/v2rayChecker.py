@@ -5,6 +5,7 @@
 import argparse
 import concurrent.futures.thread
 import tempfile
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from proxyUtil import *
 
@@ -20,10 +21,10 @@ CTRL_C = False
 tempdir = tempfile.mkdtemp()
 OS = get_OS()
 
-def Checker(proxyList, localPort, testDomain, timeOut):
+def Checker(proxyList, localPort, testDomain, timeOut, sharedProxy=None, lock=None, outputFile=None):
     liveProxy = []
 
-    proxy = PROXIES.copy()  #deepcopy(PROXIES) 
+    proxy = PROXIES.copy()  #deepcopy(PROXIES)
     proxy['http'] = proxy['http'].format(LOCAL_PORT=localPort)
     proxy['https'] = proxy['https'].format(LOCAL_PORT=localPort)
 
@@ -33,19 +34,26 @@ def Checker(proxyList, localPort, testDomain, timeOut):
     for url in proxyList :
         if CTRL_C :
             break
-        
+
         configName = createConfig(url, localPort, tempdir)
         if configName is None :
             continue
-        
+
         proc = runner(CORE, configName)
-        time.sleep(time2exec) 
+        time.sleep(time2exec)
 
         ping = is_alive(testDomain, proxy, timeOut)
         if ping:
             if not ignoreWarning :
                 logging.warning(f"[{'live'}] with ping={ping}")
                 liveProxy.append((url, ping))
+                if sharedProxy is not None and lock is not None and outputFile is not None:
+                    with lock:
+                        sharedProxy.append((url, ping))
+                        sharedProxy.sort(key=lambda x: x[1])
+                        with open(outputFile, 'w', encoding="utf-8") as f:
+                            for ss_url in sharedProxy:
+                                f.write(f"{ss_url[0]}\n")
             else:
                 ip, country = getIPnCountry(proxy, timeOut)
                 if ip is None :
@@ -53,6 +61,13 @@ def Checker(proxyList, localPort, testDomain, timeOut):
                 else :
                     logging.info(f"[live] ip={ip} @ {country} ping={ping}")
                     liveProxy.append((url, ping))
+                    if sharedProxy is not None and lock is not None and outputFile is not None:
+                        with lock:
+                            sharedProxy.append((url, ping))
+                            sharedProxy.sort(key=lambda x: x[1])
+                            with open(outputFile, 'w', encoding="utf-8") as f:
+                                for ss_url in sharedProxy:
+                                    f.write(f"{ss_url[0]}\n")
         else :
             logging.debug(f"[dead] Not alive")
 
@@ -159,9 +174,12 @@ def main(argv=sys.argv):
         port+=1
     logging.debug(f"open port: {openPort}")
     
+    sharedProxy = []
+    lock = threading.Lock()
+
     with ThreadPoolExecutor(max_workers=N) as executor:
         futures = [
-            executor.submit(Checker, proxyList, localPort, args.domain, args.timeout) 
+            executor.submit(Checker, proxyList, localPort, args.domain, args.timeout, sharedProxy, lock, args.output)
                     for proxyList, localPort in zip(split2Npart(lines, N), openPort)
             ]
         try:
@@ -170,15 +188,6 @@ def main(argv=sys.argv):
         except KeyboardInterrupt:
             CTRL_C = True
             logging.info("CTRL+C pressed")
-
-    liveProxy = []
-    for future in as_completed(futures):
-        liveProxy.extend( future.result() )
-
-    liveProxy.sort(key=lambda x: x[1])
-    with open(args.output, 'w', encoding="utf-8") as f:
-        for ss_url in liveProxy:
-            f.write(f"{ss_url[0]}\n")
 
     shutil.rmtree(tempdir)
 
