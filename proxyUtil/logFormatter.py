@@ -1,4 +1,6 @@
 import logging
+from typing import ClassVar
+
 
 # https://stackoverflow.com/a/56944256
 class CustomFormatter(logging.Formatter):
@@ -9,19 +11,17 @@ class CustomFormatter(logging.Formatter):
     green = "\x1b[32;20m"
     reset = "\x1b[0m"
 
-    #format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
     format = "%(asctime)s - %(levelname)s - %(message)s"
 
-    FORMATS = {
+    FORMATS: ClassVar[dict[int, str]] = {
         logging.DEBUG: grey + format + reset,
         logging.INFO: green + format + reset,
         logging.WARNING: yellow + format + reset,
         logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset
+        logging.CRITICAL: bold_red + format + reset,
     }
 
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
-
