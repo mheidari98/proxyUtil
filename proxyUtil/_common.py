@@ -1,9 +1,12 @@
 """Internal CLI helpers shared across proxyUtil entry points."""
+
 from __future__ import annotations
 
 from argparse import ArgumentParser
 
 from . import __version__
+
+__all__ = ["add_version_arg"]
 
 
 def add_version_arg(parser: ArgumentParser) -> None:

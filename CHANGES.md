@@ -2,6 +2,22 @@
 
 ## 0.2.0 — modernize
 
+### Follow-up cleanup (post-initial-modernize commit)
+- New `proxyUtil/network.py` containing `ScrapURL` and `downloadZray` — the only
+  network-side-effecting helpers in the package, now isolated.
+- Drop `from proxyUtil import *` from the 4 legacy CLIs; every CLI uses explicit imports.
+- `proxyUtil/__init__.py` no longer wildcard-re-exports; only `__version__` is public.
+- Every submodule (`myUtil`, `dnsUtil`, `dnsUrl`, `network`, `logFormatter`, `_common`) now
+  defines an explicit `__all__`.
+- Drop all `F403`/`F405` ruff per-file ignores.
+- Add `basedpyright` (standard mode) to dev deps and CI.
+- Add `.pre-commit-config.yaml` (ruff + standard hygiene hooks).
+- Gate publish workflow with `workflow_dispatch` (target = `test` or `prod`); tag-pushes
+  still publish to both.
+- README rewritten to point at the new uv/ruff/pytest/basedpyright workflow.
+
+### Initial modernize commit
+
 Breaking modernization. Drops Python <3.10. New tooling: `uv` + `pyproject.toml` (hatchling).
 
 ### Build / packaging

@@ -1,3 +1,5 @@
+__all__ = ["Do53_URLS", "Do53_URLS_v6", "DoH_URLS", "DoT_URLS"]
+
 Do53_URLS = {
     # Ipv4_Default
     "ES - puntCAT": ["109.69.8.51"],

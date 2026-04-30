@@ -16,7 +16,6 @@ import time
 import urllib
 import urllib.request
 import uuid
-import zipfile
 from copy import deepcopy
 from importlib.resources import files as _resource_files
 from urllib.parse import (
@@ -32,6 +31,73 @@ from urllib.parse import (
 import psutil
 import requests
 from ruamel.yaml import YAML
+
+__all__ = [
+    "CLASH_SAMPLE_PATH",
+    "PROXIES",
+    "PROXYCHAINS",
+    "Create_ss_url",
+    "Create_ss_url_withPlugin",
+    "Create_vmess_url",
+    "base64Decode",
+    "checkPatternsInList",
+    "chmodX",
+    "clearScreen",
+    "createConfig",
+    "createShadowConfig",
+    "createSsrConfig",
+    "createTrojanConfig",
+    "createVmessConfig",
+    "dnsServers",
+    "extractIPs",
+    "finder",
+    "generate_uuid",
+    "getIP",
+    "getIPnCountry",
+    "getSHA256",
+    "get_OS",
+    "get_arch",
+    "inbounds",
+    "installDocker",
+    "isBase64",
+    "is_alive",
+    "is_json",
+    "is_port_in_use",
+    "is_tool",
+    "is_valid_uuid",
+    "killProcess",
+    "mergeMultiDicts",
+    "parseContent",
+    "parseTrojan",
+    "parseVless",
+    "parse_ss",
+    "parse_ss_withPlugin",
+    "parse_ssr",
+    "processShadowJson",
+    "proxyScheme",
+    "set_proxychains",
+    "set_system_proxy",
+    "silentremove",
+    "split2Npart",
+    "ssConfig2json",
+    "ssOut",
+    "ssURI2sslocal",
+    "ss_scheme",
+    "sslocal2ssURI",
+    "ssrOut",
+    "ssr_scheme",
+    "tagChanger",
+    "tagsChanger",
+    "trojanOut",
+    "trojan_scheme",
+    "unixKillCore",
+    "unixRunCore",
+    "vless_scheme",
+    "vmessOut",
+    "vmess_scheme",
+    "winKillCore",
+    "winRunCore",
+]
 
 _yaml = YAML(typ="rt")
 
@@ -487,24 +553,6 @@ def parseContent(content, patterns=proxyScheme):
     return newProxy
 
 
-def ScrapURL(url, patterns=proxyScheme):
-    newProxy = []
-    try:
-        res = requests.get(url, timeout=4)
-    except Exception:
-        logging.debug("Exception occurred", exc_info=True)
-        logging.error(f"Can't reach {url}")
-        return newProxy
-
-    if (res.status_code // 100) == 2:
-        content = res.text.strip().replace("\ufeff", "")
-        newProxy = parseContent(content, patterns)
-        logging.info(f"Got {len(newProxy)} new proxy from {url}")
-    else:
-        logging.error(f"Can't get {url} , status code = {res.status_code}")
-    return newProxy
-
-
 def tagChanger(url, tag="4MahsaAmini"):
     ParseResult = urllib.parse.urlparse(url)
     if ParseResult.scheme == "ss":
@@ -831,38 +879,6 @@ def chmodX(path):
         return
     st = os.stat(path)
     os.chmod(path, st.st_mode | stat.S_IEXEC)
-
-
-def downloadZray(acc, repo):
-    TAG = requests.get(f"https://api.github.com/repos/{acc}/{repo}-core/releases/latest").json()[
-        "tag_name"
-    ]
-
-    ZRAY_FILE = f"{repo}-{get_OS()}-{get_arch()}.zip"
-    ZRAY_URL = f"https://github.com/{acc}/{repo}-core/releases/download/{TAG}/{ZRAY_FILE}"
-    DGST_FILE = f"{ZRAY_FILE}.dgst"
-    DGST_URL = f"https://github.com/{acc}/{repo}-core/releases/download/{TAG}/{DGST_FILE}"
-    ZIP_FILE = f"{repo}.zip"
-
-    urllib.request.urlretrieve(ZRAY_URL, ZIP_FILE)
-    logging.info(f"Downloaded {ZRAY_FILE}")
-    r = requests.get(DGST_URL)
-    FILE_SHA256 = (
-        next(line for line in r.content.splitlines() if line.startswith(b"SHA2-256"))
-        .decode()
-        .split()[1]
-    )
-    if getSHA256(ZIP_FILE) == FILE_SHA256:
-        logging.info("SHA256 Check passed")
-        with zipfile.ZipFile(ZIP_FILE, "r") as zip_ref:
-            zip_ref.extractall(repo)
-        os.remove(ZIP_FILE)
-        chmodX(f"{repo}/{repo}")
-    else:
-        logging.error("SHA256 Check failed")
-        logging.error(f"Expected: {FILE_SHA256}")
-        logging.error(f"Actual: {getSHA256(ZIP_FILE)}")
-        sys.exit(1)
 
 
 def createConfig(url, localPort, path):

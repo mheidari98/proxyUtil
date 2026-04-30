@@ -7,8 +7,26 @@ import urllib
 import dns.message  # pip install dnspython[doh,dnssec,idna]
 import dns.name
 import dns.query
+import dns.rdatatype
 import requests
 from bs4 import BeautifulSoup  # pip install beautifulsoup4
+
+__all__ = [
+    "DEFAULT_TIMEOUT",
+    "RR",
+    "Do53_DEFAULT_ENDPOINT",
+    "Do53_reolver",
+    "DoH_DEFAULT_ENDPOINT",
+    "DoH_resolver",
+    "DoT_DEFAULT_ENDPOINT",
+    "DoT_resolver",
+    "FILTER_CIDRs",
+    "findURLs",
+    "isFilter",
+    "isIPv4",
+    "isIPv6",
+    "scrapeDoH",
+]
 
 DEFAULT_TIMEOUT = 3.0
 Do53_DEFAULT_ENDPOINT = "8.8.8.8"

@@ -1,6 +1,8 @@
 import logging
 from typing import ClassVar
 
+__all__ = ["CustomFormatter"]
+
 
 # https://stackoverflow.com/a/56944256
 class CustomFormatter(logging.Formatter):
