@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+import argparse
+import concurrent.futures
+import itertools
+import json
+import logging
+import os
+import shutil
+import sys
+import tempfile
+import time
+
+import requests
+
+from proxyUtil._common import add_version_arg
+from proxyUtil.dnsUtil import isIPv4, isIPv6
+from proxyUtil.logFormatter import CustomFormatter
+from proxyUtil.myUtil import (
+    PROXIES,
+    ScrapURL,
+    getIP,
+    is_alive,
+    is_port_in_use,
+    is_tool,
+    killProcess,
+    parse_ss_withPlugin,
+    parseContent,
+    split2Npart,
+    ss_scheme,
+    ssURI2sslocal,
+)
+
+
+def _checker(shadowList, localPort, testDomain, timeOut, tempdir):
+    liveProxy = []
+    proxy = PROXIES.copy()
+    proxy["http"] = proxy["http"].format(LOCAL_PORT=localPort)
+    proxy["https"] = proxy["https"].format(LOCAL_PORT=localPort)
+
+    pidPath = f"{tempdir}/ss.pid.{localPort}"
+
+    for ss_url in shadowList:
+        server, _server_port, _method, _password, _plugin, _plugin_opts, _tag = parse_ss_withPlugin(
+            ss_url
+        )
+
+        if not isIPv4(server) and not isIPv6(server) and not getIP(server):
+            continue
+
+        cmd = ssURI2sslocal(ss_url, localPort, pidPath)
+        os.system(cmd)
+        time.sleep(0.2)
+
+        ping = is_alive(testDomain, proxy, timeOut)
+        if ping:
+            liveProxy.append((ss_url, ping))
+            try:
+                result = json.loads(
+                    requests.get("http://ip-api.com/json/", proxies=proxy, timeout=timeOut).content
+                )
+                logging.info(f"[live] ip={result['query']} @ {result['country']} ping={ping}")
+            except Exception:
+                logging.warning(f"[failed] ip={server} with ping={ping}")
+        else:
+            logging.debug(f"[dead] ip={server}")
+
+        os.system(f"if ps -p $(cat {pidPath}) > /dev/null 2>&1 ;then kill -9 $(cat {pidPath}); fi")
+        time.sleep(0.3)
+
+    return liveProxy
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Simple shadowsocks proxy checker")
+    add_version_arg(parser)
+    parser.add_argument("-f", "--file", help="file contain ss proxy")
+    parser.add_argument(
+        "-d", "--domain", help="test connect domain", default="https://www.google.com"
+    )
+    parser.add_argument(
+        "-t", "--timeout", help="timeout in seconds, default is 3", default=3, type=int
+    )
+    parser.add_argument(
+        "-l", "--lport", help="start local port, default is 1080", default=1080, type=int
+    )
+    parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
+    parser.add_argument("-vv", "--debug", help="debug log", action="store_true")
+    parser.add_argument(
+        "-T", "--threads", help="threads number, default is 10", default=10, type=int
+    )
+    parser.add_argument("--url", help="get proxy from url")
+    parser.add_argument("--free", help="get free proxy", action="store_true")
+    parser.add_argument("--stdin", help="get proxy from stdin", action="store_true")
+    parser.add_argument("--reuse", help="reuse last checked proxy", action="store_true")
+    parser.add_argument("-o", "--output", help="output file", default="sortedShadow.txt")
+    args = parser.parse_args(argv)
+
+    ch = logging.StreamHandler()
+    ch.setFormatter(CustomFormatter())
+    logging.basicConfig(level=logging.ERROR, handlers=[ch])
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.INFO)
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    if not is_tool("ss-local"):
+        logging.error("ss-local not found, please install shadowsocks client first")
+        logging.error("\thttps://github.com/shadowsocks/shadowsocks-libev")
+        return 1
+
+    killProcess("ss-local")
+
+    tempdir = tempfile.mkdtemp()
+    try:
+        lines = set()
+        if args.file and os.path.isfile(args.file):
+            with open(args.file, encoding="UTF-8") as fh:
+                lines.update(parseContent(fh.read().strip(), [ss_scheme]))
+                logging.info(f"got {len(lines)} from reading proxy from file")
+
+        if args.reuse and os.path.isfile(args.output):
+            with open(args.output, encoding="UTF-8") as fh:
+                lines.update(parseContent(fh.read().strip()))
+
+        if args.url:
+            lines.update(ScrapURL(args.url, [ss_scheme]))
+
+        if args.free:
+            lines.update(
+                ScrapURL("https://raw.githubusercontent.com/freefq/free/master/v2", [ss_scheme])
+            )
+
+        if args.stdin:
+            lines.update(parseContent(sys.stdin.read(), [ss_scheme]))
+
+        lines = list(lines)
+        logging.info(f"We have {len(lines)} proxy to check")
+
+        if not lines:
+            logging.error("No proxy to check")
+            return 1
+
+        N = min(args.threads, len(lines))
+
+        openPort = []
+        port = args.lport
+        while len(openPort) < N:
+            if not is_port_in_use(port):
+                openPort.append(port)
+            port += 1
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=N) as executor:
+            results = executor.map(
+                _checker,
+                split2Npart(lines, N),
+                openPort,
+                itertools.repeat(args.domain, N),
+                itertools.repeat(args.timeout, N),
+                itertools.repeat(tempdir, N),
+            )
+
+        liveProxy = list(itertools.chain(*results))
+        liveProxy.sort(key=lambda x: x[1])
+        with open(args.output, "w") as f:
+            for ss_url in liveProxy:
+                f.write(f"{ss_url[0]}\n")
+    finally:
+        shutil.rmtree(tempdir, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

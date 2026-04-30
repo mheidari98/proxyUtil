@@ -9,30 +9,39 @@
 ##########################################################################
 import argparse
 import ipaddress
+
 from proxyUtil import *
+from proxyUtil._common import add_version_arg
 
 ch = logging.StreamHandler()
 ch.setFormatter(CustomFormatter())
 logging.basicConfig(level=logging.ERROR, handlers=[ch])
 
 
-def main(argv=sys.argv):
-    parser = argparse.ArgumentParser(description="Exctraction IP from shadowsocks, vmess, vless, trojan links")
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Extract IPs from shadowsocks, vmess, vless, trojan links"
+    )
+    add_version_arg(parser)
     parser.add_argument("-f", "--file", help="file contain proxy")
-    parser.add_argument('--stdin', help="get proxies from stdin", action='store_true', default=False)
-    parser.add_argument('--url', help="get proxies from url")
-    parser.add_argument('--sort', help="sort output", action='store_true', default=False)
-    parser.add_argument('-v', "--verbose", help="increase output verbosity", action="store_true", default=False)
-    parser.add_argument('-o', '--output', help="output file")
-    args = parser.parse_args(argv[1:])
+    parser.add_argument(
+        "--stdin", help="get proxies from stdin", action="store_true", default=False
+    )
+    parser.add_argument("--url", help="get proxies from url")
+    parser.add_argument("--sort", help="sort output", action="store_true", default=False)
+    parser.add_argument(
+        "-v", "--verbose", help="increase output verbosity", action="store_true", default=False
+    )
+    parser.add_argument("-o", "--output", help="output file")
+    args = parser.parse_args(argv)
 
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
-    
+
     if args.stdin:
         proxies = parseContent(sys.stdin.read().strip())
     elif args.file and os.path.isfile(args.file):
-        with open(args.file, 'r', encoding='UTF-8') as file:
+        with open(args.file, encoding="UTF-8") as file:
             proxies = parseContent(file.read().strip())
     elif args.url:
         proxies = ScrapURL(args.url)
@@ -43,16 +52,16 @@ def main(argv=sys.argv):
     logging.info(f"Total proxies: {len(proxies)}")
 
     ips = list(filter(None, map(extractIPs, proxies)))
-    
+
     if args.sort:
         ips = [ip for ip in ips if isIPv4(ip) or isIPv6(ip)]
         ips = sorted(ips, key=lambda ip: int(ipaddress.IPv4Address(ip)))
-    
-    outputs = '\n'.join(ips)
-    if args.output :
-        with open(args.output, 'w', encoding='UTF-8') as f :
+
+    outputs = "\n".join(ips)
+    if args.output:
+        with open(args.output, "w", encoding="UTF-8") as f:
             f.write(outputs)
-    else :
+    else:
         print(outputs)
 
 
