@@ -9,9 +9,15 @@
 ##########################################################################
 import argparse
 import ipaddress
+import logging
+import os
+import sys
 
-from proxyUtil import *
 from proxyUtil._common import add_version_arg
+from proxyUtil.dnsUtil import isIPv4, isIPv6
+from proxyUtil.logFormatter import CustomFormatter
+from proxyUtil.myUtil import extractIPs, parseContent
+from proxyUtil.network import ScrapURL
 
 ch = logging.StreamHandler()
 ch.setFormatter(CustomFormatter())

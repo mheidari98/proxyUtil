@@ -2,12 +2,21 @@
 # https://github.com/rthalley/dnspython
 # https://dnspython.readthedocs.io
 import argparse
+import logging
 
-from rich.console import Console  # pip install rich
+from rich.console import Console
 from rich.table import Table
 
-from proxyUtil import *
 from proxyUtil._common import add_version_arg
+from proxyUtil.dnsUrl import Do53_URLS, DoH_URLS, DoT_URLS
+from proxyUtil.dnsUtil import (
+    DEFAULT_TIMEOUT,
+    RR,
+    Do53_reolver,
+    DoH_resolver,
+    DoT_resolver,
+)
+from proxyUtil.logFormatter import CustomFormatter
 
 ch = logging.StreamHandler()
 ch.setFormatter(CustomFormatter())

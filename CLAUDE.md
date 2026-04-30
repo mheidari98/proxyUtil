@@ -21,6 +21,9 @@ proxyUtil/
   dnsChecker.py      CLI: probe DNS resolvers, render rich.Table
   ipExtractor.py     CLI: extract IPs from a list of proxy URLs
   v2rayChecker.py    CLI: parallel proxy liveness checker, needs xray/v2ray binary
+  network.py         Network-side-effect helpers (ScrapURL, downloadZray) — isolated
+                     so callers know which utilities hit live HTTP at call time
+  _common.py         Internal helper: add_version_arg(parser) for all 10 CLIs
   data/
     Clash-Template.yaml  packaged via importlib.resources
   cli/                  Newer CLIs migrated from old scripts/ folder
@@ -44,7 +47,9 @@ uv run pytest -v                     # run tests
 uv run pytest --cov=proxyUtil        # coverage
 uv run ruff check . --fix            # lint+autofix
 uv run ruff format .                 # format
+uv run basedpyright proxyUtil        # type check
 uv build                             # build sdist + wheel into dist/
+pre-commit install                   # (optional) git hooks
 uv run cdnGen --help                 # any of the 10 CLIs
 uv run cdnGen --version              # prints "cdnGen 0.2.0"
 ```
@@ -66,16 +71,19 @@ shadowChecker, sslocal2ssURI, ssURI2sslocal`. All accept `--version` and `--help
 - **Cloudflare SDK**: v3+ client = `from cloudflare import Cloudflare, APIError`. Methods are
   `cf.zones.list`, `cf.dns.records.list/create/delete/update`, `cf.zones.settings.get`.
   Records are pydantic objects (attribute access, not `[...]`).
-- **Wildcard imports**: `from proxyUtil import *` is the public API in 4 legacy CLI modules
-  (`cdnGen, dnsChecker, ipExtractor, v2rayChecker`). New code in `proxyUtil/cli/` uses
-  explicit imports. Don't remove the wildcard — it's load-bearing for those modules.
+- **No wildcard imports anywhere.** Every submodule defines `__all__`; CLIs import the
+  specific names they need. The package surface re-exposes only `__version__`.
 - **Lint config**: ruff is the single tool; line-length 100; rules `E F W I UP B SIM RUF`.
-  Per-file ignores allow `F403/F405` for the wildcard-import files.
+  No per-file `F403/F405` ignores — wildcard imports are not allowed.
+- **Type checking**: `basedpyright` (standard mode) is wired into CI. Some legacy
+  pre-existing patterns (regex `match.group()` without null check, urllib attribute access,
+  ruamel YAML stub gaps) are silenced via per-rule ignores in `pyproject.toml`.
 
 ## Pitfalls
 
-- `downloadZray` and `ScrapURL` (in `myUtil.py`) hit external URLs — never call from tests.
-  Mark any future test that exercises them with `@pytest.mark.network`.
+- `downloadZray` and `ScrapURL` (in `proxyUtil.network`) hit external URLs — never call from
+  tests. Mark any future test that exercises them with `@pytest.mark.network`. Importing the
+  `network` module itself is fine; calling those functions is what triggers I/O.
 - `cfRecorder` requires real Cloudflare credentials. The CLI accepts the literal email value
   `"token"` to switch to API-token auth (passes `api_token=...` instead of `api_email/api_key`).
 - `from .myUtil import *` in `proxyUtil/__init__.py` re-exports module-level names *including*
@@ -108,12 +116,6 @@ shadowChecker, sslocal2ssURI, ssURI2sslocal`. All accept `--version` and `--help
 
 ## Known follow-ups (not in 0.2.0)
 
-- Add explicit `__all__` lists to every submodule; deprecate the `from .myUtil import *` in
-  `__init__.py`.
-- Migrate the 4 wildcard-importing CLIs (`cdnGen`, `dnsChecker`, `ipExtractor`,
-  `v2rayChecker`) to explicit imports like `proxyUtil/cli/*` already use.
-- Move `downloadZray` and `ScrapURL` into a `proxyUtil.network` submodule to make their
-  side-effecting nature obvious; consider gating behind an env flag.
-- Type annotations + mypy / basedpyright in CI (currently only ruff).
-- Pre-commit hook config wiring ruff.
-- `workflow_dispatch` gate on the publish workflow (currently auto-publishes any tag).
+- Add proper type annotations to `myUtil.py` regex/parse helpers so basedpyright can drop
+  the per-rule ignores currently set in `pyproject.toml`.
+- Consider gating `downloadZray` behind an env flag rather than a docstring warning.

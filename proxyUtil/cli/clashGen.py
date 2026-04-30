@@ -12,7 +12,8 @@ from ruamel.yaml import YAML
 
 from proxyUtil._common import add_version_arg
 from proxyUtil.logFormatter import CustomFormatter
-from proxyUtil.myUtil import CLASH_SAMPLE_PATH, ScrapURL, installDocker, parseContent
+from proxyUtil.myUtil import CLASH_SAMPLE_PATH, installDocker, parseContent
+from proxyUtil.network import ScrapURL
 
 # https://github.com/blackmatrix7/ios_rule_script/tree/master/rule/Clash
 # https://github.com/ACL4SSR/ACL4SSR/tree/master/Clash

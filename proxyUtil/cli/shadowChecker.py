@@ -17,7 +17,6 @@ from proxyUtil.dnsUtil import isIPv4, isIPv6
 from proxyUtil.logFormatter import CustomFormatter
 from proxyUtil.myUtil import (
     PROXIES,
-    ScrapURL,
     getIP,
     is_alive,
     is_port_in_use,
@@ -29,6 +28,7 @@ from proxyUtil.myUtil import (
     ss_scheme,
     ssURI2sslocal,
 )
+from proxyUtil.network import ScrapURL
 
 
 def _checker(shadowList, localPort, testDomain, timeOut, tempdir):

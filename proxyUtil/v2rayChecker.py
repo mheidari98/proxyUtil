@@ -3,11 +3,32 @@
 #   https://www.v2ray.com/en/welcome/install.html
 #   sudo bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh)
 import argparse
+import logging
+import os
+import random
+import shutil
+import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from proxyUtil import *
 from proxyUtil._common import add_version_arg
+from proxyUtil.logFormatter import CustomFormatter
+from proxyUtil.myUtil import (
+    PROXIES,
+    createConfig,
+    get_OS,
+    getIPnCountry,
+    is_alive,
+    is_port_in_use,
+    parseContent,
+    split2Npart,
+    unixKillCore,
+    unixRunCore,
+    winKillCore,
+    winRunCore,
+)
+from proxyUtil.network import ScrapURL, downloadZray
 
 ch = logging.StreamHandler()
 ch.setFormatter(CustomFormatter())

@@ -12,13 +12,13 @@ from proxyUtil._common import add_version_arg
 from proxyUtil.logFormatter import CustomFormatter
 from proxyUtil.myUtil import (
     createConfig,
-    downloadZray,
     is_port_in_use,
     is_tool,
     set_proxychains,
     set_system_proxy,
     ssURI2sslocal,
 )
+from proxyUtil.network import downloadZray
 
 
 def _ss_runner(ss_url, localPort):

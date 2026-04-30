@@ -41,6 +41,8 @@ dev = [
     "pytest>=8",
     "pytest-cov>=5",
     "ruff>=0.6",
+    "basedpyright>=1.18",
+    "pre-commit>=3.7",
     "build>=1.2",
     "twine>=5",
 ]
@@ -91,14 +93,25 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"proxyUtil/__init__.py"      = ["F401", "F403"]
-# Legacy modules use `from proxyUtil import *` for backwards compatibility.
-"proxyUtil/cdnGen.py"        = ["F403", "F405"]
-"proxyUtil/dnsChecker.py"    = ["F403", "F405"]
-"proxyUtil/ipExtractor.py"   = ["F403", "F405"]
-"proxyUtil/v2rayChecker.py"  = ["F403", "F405"]
-"proxyUtil/cli/*.py"         = ["F403", "F405"]
-"tests/*"                    = ["B", "SIM", "E402"]
+"tests/*" = ["B", "SIM", "E402"]
+
+[tool.basedpyright]
+include = ["proxyUtil"]
+exclude = ["**/__pycache__", "build", "dist", ".venv"]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+# Pre-existing legacy patterns we are intentionally not chasing in this branch.
+reportOptionalMemberAccess        = false
+reportOptionalSubscript           = false
+reportAttributeAccessIssue        = false
+reportArgumentType                = false
+reportCallIssue                   = false
+reportOperatorIssue               = false
+reportPossiblyUnboundVariable     = false
+reportInvalidStringEscapeSequence = false
+reportAssignmentType              = false
+reportMissingImports              = false
+reportConstantRedefinition        = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

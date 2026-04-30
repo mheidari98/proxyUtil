@@ -13,10 +13,18 @@
 ##########################################################################
 import argparse
 import ipaddress
+import json
+import logging
 import random
+import re
+import urllib.parse
+from urllib.parse import urlencode
 
-from proxyUtil import *
+import requests
+
 from proxyUtil._common import add_version_arg
+from proxyUtil.logFormatter import CustomFormatter
+from proxyUtil.myUtil import Create_vmess_url, base64Decode, isBase64
 
 ch = logging.StreamHandler()
 ch.setFormatter(CustomFormatter())
