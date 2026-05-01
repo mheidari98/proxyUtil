@@ -122,6 +122,9 @@ def _transport_block(parsed: dict) -> dict | None:
     host = parsed.get("host")
     path = parsed.get("path", "/")
 
+    def _httpupgrade():
+        return {"type": "httpupgrade", "path": path, **({"host": host} if host else {})}
+
     match net:
         case "" | "tcp" | "raw" | "none":
             return None
@@ -134,14 +137,14 @@ def _transport_block(parsed: dict) -> dict | None:
                 block["early_data_header_name"] = "Sec-WebSocket-Protocol"
             return block
         case "grpc":
-            return {"type": "grpc", "service_name": parsed.get("serviceName") or path}
+            return {"type": "grpc", "service_name": parsed.get("serviceName") or parsed.get("path", "")}
         case "h2" | "http":
             block = {"type": "http", "path": path}
             if host:
                 block["host"] = split_csv(host)
             return block
         case "httpupgrade":
-            return {"type": "httpupgrade", "path": path, **({"host": host} if host else {})}
+            return _httpupgrade()
         case "quic":
             return {"type": "quic"}
         case "xhttp" | "splithttp":
@@ -149,7 +152,7 @@ def _transport_block(parsed: dict) -> dict | None:
             logging.warning(
                 f"sing-box has no {net!r} transport; downgrading to httpupgrade for {target}"
             )
-            return {"type": "httpupgrade", "path": path, **({"host": host} if host else {})}
+            return _httpupgrade()
         case _:
             logging.warning(f"unsupported sing-box transport {net!r}; emitting plain TCP")
             return None
@@ -404,6 +407,7 @@ def writeConfig(url, localPort, path):
     config = build_singbox_config(url, localPort)
     if config is None:
         return None
-    name = str(Path(path) / f"singbox_{localPort}.json")
-    Path(name).write_text(json.dumps(config))
-    return name
+    out = Path(path) / f"singbox_{localPort}.json"
+    with out.open("w") as f:
+        json.dump(config, f)
+    return str(out)
