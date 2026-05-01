@@ -126,7 +126,7 @@ def main(argv=None):
 
         liveProxy = list(itertools.chain.from_iterable(results))
         liveProxy.sort(key=lambda x: x[1])
-        Path(args.output).write_text("\n".join(url for url, _ in liveProxy) + "\n")
+        Path(args.output).write_text("".join(f"{url}\n" for url, _ in liveProxy))
     finally:
         shutil.rmtree(tempdir, ignore_errors=True)
 
