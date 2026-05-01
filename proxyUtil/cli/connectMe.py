@@ -38,17 +38,6 @@ def _spawn(argv, label):
         logging.error(f"{label} failed to start")
 
 
-def _ss_runner(ss_url, localPort):
-    _spawn(shlex.split(ssURI2sslocal(ss_url, localPort)), "ss-local")
-
-
-def _v2ray_runner(spec, binary, url, localPort, tempdir):
-    configName = spec.write_config(url, localPort, tempdir)
-    if configName is None:
-        return
-    _spawn(spec.run_argv(binary, configName), spec.name)
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Simple proxy client for ss/v2ray/trojan")
     add_version_arg(parser)
@@ -94,14 +83,17 @@ def main(argv=None):
                 logging.error("ss-local not found, please install shadowsocks client first")
                 logging.error("\thttps://github.com/shadowsocks/shadowsocks-libev")
                 return None
-            _ss_runner(args.link, args.lport)
+            _spawn(shlex.split(ssURI2sslocal(args.link, args.lport)), "ss-local")
         else:
             spec = cores.get(args.core)
             binary = cores.resolve(spec)
             if not binary:
                 return 1
             logging.info(f"using {spec.name} at {binary}")
-            _v2ray_runner(spec, binary, args.link, args.lport, tempdir)
+            configName = spec.write_config(args.link, args.lport, tempdir)
+            if configName is None:
+                return None
+            _spawn(spec.run_argv(binary, configName), spec.name)
 
         if args.system:
             set_system_proxy(enable=False)

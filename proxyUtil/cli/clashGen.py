@@ -4,6 +4,7 @@ import logging
 import subprocess
 import sys
 import time
+from pathlib import Path
 from urllib.parse import quote
 
 import requests
@@ -51,14 +52,12 @@ STOP_SUBCONVERTER = "docker stop subconverter"
 def _check_subconverter():
     for _ in range(10):
         try:
-            res = requests.get("http://localhost:25500/version").text
+            if "subconverter" in requests.get("http://localhost:25500/version").text:
+                return
         except Exception:
-            time.sleep(1)
-            continue
-        if "subconverter" in res:
-            break
-    else:
-        sys.exit("subconverter start failed")
+            pass
+        time.sleep(1)
+    sys.exit("subconverter start failed")
 
 
 def _run(cmd):
@@ -70,6 +69,9 @@ def _run(cmd):
     return p.returncode, p.stdout.decode(), p.stderr.decode()
 
 
+_BEHAVIOR_PREFIX = {"classical": "", "domain": "DOMAIN,", "ipcidr": "IP-CIDR,"}
+
+
 def _get_rule_set(yaml_safe, behavior, url, policy="DIRECT"):
     try:
         res = requests.get(url)
@@ -79,16 +81,12 @@ def _get_rule_set(yaml_safe, behavior, url, policy="DIRECT"):
     if res.status_code != 200:
         logging.error(f"get {url} failed")
         return []
+    if (prefix := _BEHAVIOR_PREFIX.get(behavior)) is None:
+        logging.error(f"unknown behavior {behavior}")
+        return []
     rules = yaml_safe.load(res.text)["payload"]
     logging.info(f"got {len(rules)} rules from {url}")
-    if behavior == "classical":
-        return [f"{s},{policy}" for s in rules]
-    if behavior == "domain":
-        return [f"DOMAIN,{s},{policy}" for s in rules]
-    if behavior == "ipcidr":
-        return [f"IP-CIDR,{s},{policy}" for s in rules]
-    logging.error(f"unknown behavior {behavior}")
-    return []
+    return [f"{prefix}{s},{policy}" for s in rules]
 
 
 def main(argv=None):
@@ -129,34 +127,36 @@ def main(argv=None):
 
     installDocker()
 
-    with open(CLASH_SAMPLE_PATH) as f:
+    with Path(CLASH_SAMPLE_PATH).open() as f:
         myclash = yaml_rt.load(f)
 
     if not args.dns:
         myclash.pop("dns", None)
 
     if args.premium:
-        rulesets = {}
-        for name, behavior, url in DIRECT_RULE_SET + REJECT_RULE_SET:
-            rulesets[name] = {
+        myclash["rule-providers"] = {
+            name: {
                 "type": "http",
                 "behavior": behavior,
                 "url": url,
                 "path": f"./ruleset/{name}.yaml",
                 "interval": 86400,
             }
-        myclash["rule-providers"] = rulesets
-        rules = [f"RULE-SET,{rs[0]},DIRECT" for rs in DIRECT_RULE_SET]
-        rules += [f"RULE-SET,{rs[0]},REJECT" for rs in REJECT_RULE_SET]
-        rules.append("MATCH,🔆 LIST")
-        myclash["rules"] = rules
+            for name, behavior, url in DIRECT_RULE_SET + REJECT_RULE_SET
+        }
+        myclash["rules"] = [
+            *(f"RULE-SET,{rs[0]},DIRECT" for rs in DIRECT_RULE_SET),
+            *(f"RULE-SET,{rs[0]},REJECT" for rs in REJECT_RULE_SET),
+            "MATCH,🔆 LIST",
+        ]
     elif args.rule:
         myclash.pop("rule-providers", None)
-        rules = []
-        for _name, behavior, url in DIRECT_RULE_SET:
-            rules.extend(_get_rule_set(yaml_safe, behavior, url, "DIRECT"))
-        for _name, behavior, url in REJECT_RULE_SET:
-            rules.extend(_get_rule_set(yaml_safe, behavior, url, "REJECT"))
+        rules = [
+            rule
+            for ruleset, policy in ((DIRECT_RULE_SET, "DIRECT"), (REJECT_RULE_SET, "REJECT"))
+            for _name, behavior, url in ruleset
+            for rule in _get_rule_set(yaml_safe, behavior, url, policy)
+        ]
         rules.append("MATCH,🔆 LIST")
         myclash["rules"] = rules
     else:
@@ -181,20 +181,15 @@ def main(argv=None):
     myclash["proxies"] = clashyml["proxies"]
 
     extended = [
-        "🔥 Auto(Best ping)",
-        "Auto-Fallback",
-        "⚖️ load-balance hash",
-        "⚖️ load-balance round-robin",
-        "DIRECT",
-        "REJECT",
+        "🔥 Auto(Best ping)", "Auto-Fallback",
+        "⚖️ load-balance hash", "⚖️ load-balance round-robin",
+        "DIRECT", "REJECT",
     ]
     myclash["proxy-groups"][0]["proxies"] = extended + proxyNames
-    myclash["proxy-groups"][1]["proxies"] = proxyNames
-    myclash["proxy-groups"][2]["proxies"] = proxyNames
-    myclash["proxy-groups"][3]["proxies"] = proxyNames
-    myclash["proxy-groups"][4]["proxies"] = proxyNames
+    for i in range(1, 5):
+        myclash["proxy-groups"][i]["proxies"] = proxyNames
 
-    with open(args.output, "w") as f:
+    with Path(args.output).open("w") as f:
         yaml_rt.dump(myclash, f)
         logging.info(f"clash config saved to {args.output}")
 
