@@ -1,5 +1,39 @@
 # Changes
 
+## Unreleased — modernize sweep across the package
+
+Backwards-compatible code-quality pass; no scheme matrix or CLI surface change.
+
+### Modernization
+- `match`/`case` dispatch in `singbox.build_singbox_config`, `singbox._transport_block`,
+  `xray.createConfig`, `xray.createTrojanConfig` transport, `os_glue.get_OS`/`get_arch`,
+  `cores.resolve` install dispatch.
+- Walrus `:=` in `parsers.tagsChanger`/`parseTrojan`/`checkPatternsInList`,
+  `_common.collect_proxies`, `cfRecorder` IP filter, `clashGen._get_rule_set`,
+  `singbox._transport_block`.
+- Dispatch tables: `parsers._IP_EXTRACTORS`, `parsers._PATTERN_RES` (per-scheme regex,
+  pre-compiled once — removes quadratic compile in batch hot path), `clashGen._BEHAVIOR_PREFIX`,
+  `cores.REGISTRY` built via dict-comp.
+- Pathlib at every IO call site (replaces `os.path.join`, `os.remove`, manual `open` for
+  read/write of small files).
+- Comprehensions over loops in `processShadowJson`, `parse_ssr` decoder, `dnsChecker`
+  triple-loop, `clashGen` rule flatten, sort-output writers.
+- `dnsUtil`: 3 resolver functions factored through one `_resolve(query_fn)` helper.
+- `logFormatter.CustomFormatter`: pre-built one `Formatter` per level as ClassVar (was
+  instantiating a fresh `Formatter` per log record).
+- `utils.finder`: `lru_cache` over the compiled regex; `re.escape` on the flag.
+
+### Bug fixes
+- `ipExtractor --sort` no longer crashes on IPv6 (was using `IPv4Address` for the sort key).
+- `parsers.parse_ss`/`parse_ss_withPlugin`/`parseVless`/`parseTrojan` raise `ValueError`
+  with a useful message instead of `AttributeError` on `None.groups()` for malformed URLs.
+- `net.getIP` returns `None` (not `False`) on resolve failure — truthiness contract intact.
+- `dnsUtil.Do53_resolver` added as the spelled name; `Do53_reolver` kept as alias.
+- `connectMe`: when the picked core fails to write a config, fall through to the
+  system-proxy cleanup instead of returning early.
+- `v2rayChecker` / `shadowChecker`: empty result no longer writes a stray `\n` to the
+  output file.
+
 ## 0.4.0 — module split + unified `--core` + full scheme matrix
 
 ### Package layout (breaking)

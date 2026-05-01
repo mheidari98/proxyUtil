@@ -6,6 +6,13 @@
 on PyPI. Current version: **0.4.0**. Python: **>=3.10**. License: MIT. Entry point:
 `pyproject.toml` (hatchling backend).
 
+The codebase uses Python 3.10+ features liberally: `match`/`case` for scheme dispatch
+(`singbox.build_singbox_config`, `xray.createConfig`, `os_glue.get_OS`/`get_arch`,
+`cores.resolve`), walrus `:=` in parsers/CLIs, dispatch tables instead of if-chains
+(`parsers._IP_EXTRACTORS`, `parsers._PATTERN_RES`, `xray._TRANSPORT_BUILDERS`,
+`clashGen._BEHAVIOR_PREFIX`, `cores.REGISTRY`), pathlib for IO, compiled regexes hoisted
+to module scope.
+
 ## Layout
 
 ```
@@ -37,9 +44,10 @@ proxyUtil/
   logFormatter.py    Coloured logging.Formatter.
   data/
     Clash-Template.yaml  packaged via importlib.resources.
+  _common.py         Internal CLI helpers: add_version_arg, add_source_args,
+                     collect_proxies, find_free_ports. (Imported as
+                     `proxyUtil._common` from CLIs.)
   cli/
-    _common.py        Internal CLI helpers: add_version_arg, add_source_args,
-                      collect_proxies, find_free_ports.
     cdnGen.py         CLI: rewrite vmess/vless/trojan with CDN IPs as address.
     cfRecorder.py     CLI: Cloudflare DNS A-record sync (uses cloudflare>=3 SDK).
     dnsChecker.py     CLI: probe DNS resolvers, render rich.Table.
@@ -81,7 +89,7 @@ uv run basedpyright proxyUtil        # type check
 uv build                             # build sdist + wheel into dist/
 pre-commit install                   # (optional) git hooks
 uv run cdnGen --help                 # any of the 10 CLIs
-uv run cdnGen --version              # prints "cdnGen 0.2.0"
+uv run cdnGen --version              # prints "cdnGen 0.4.0"
 ```
 
 The 10 CLIs: `cdnGen, dnsChecker, cfRecorder, ipExtractor, v2rayChecker, clashGen, connectMe,
@@ -94,7 +102,7 @@ shadowChecker, sslocal2ssURI, ssURI2sslocal`. All accept `--version` and `--help
   `parser.parse_args(argv)`. Always add `parser.add_argument("--version", action="version",
   version=f"%(prog)s {__version__}")` before any positional argument.
 - **Package data**: load via `importlib.resources.files("proxyUtil") / "data" / "X"` — never
-  `os.path.dirname(__file__)`. Pre-resolved as `CLASH_SAMPLE_PATH` in `myUtil.py`.
+  `os.path.dirname(__file__)`. Pre-resolved as `CLASH_SAMPLE_PATH` in `xray.py`.
 - **YAML**: use `from ruamel.yaml import YAML; _yaml = YAML(typ="rt")`. Never `from ruamel
   import yaml` (removed in ruamel.yaml 0.18). For non-roundtrip needs, instantiate
   `YAML(typ="safe")`.
@@ -111,16 +119,16 @@ shadowChecker, sslocal2ssURI, ssURI2sslocal`. All accept `--version` and `--help
 
 ## Pitfalls
 
-- `downloadZray` and `ScrapURL` (in `proxyUtil.network`) hit external URLs — never call from
-  tests. Mark any future test that exercises them with `@pytest.mark.network`. Importing the
-  `network` module itself is fine; calling those functions is what triggers I/O.
+- `downloadZray`, `downloadSingBox`, `ScrapURL`, `is_alive`, `getIPnCountry`, `getIP` (in
+  `proxyUtil.net`) hit external URLs / DNS — never call from tests. Mark any future test that
+  exercises them with `@pytest.mark.network`. Importing `proxyUtil.net` itself is fine; calling
+  those functions is what triggers I/O.
 - `cfRecorder` requires real Cloudflare credentials. The CLI accepts the literal email value
   `"token"` to switch to API-token auth (passes `api_token=...` instead of `api_email/api_key`).
-- `from .myUtil import *` in `proxyUtil/__init__.py` re-exports module-level names *including*
-  imported modules (`random`, `requests`, etc). Some legacy CLIs rely on this — Pyright will
-  warn but it works at runtime.
-- `myUtil.py` has known Pyright noise (regex `match.group()` without null check, `urllib.parse`
-  attribute access). These are pre-existing patterns — out of scope to fix here.
+- `proxyUtil/__init__.py` only exports `__version__`. No wildcard imports anywhere in the
+  package — every submodule defines `__all__` and CLIs import explicit names.
+- `dnsUtil.Do53_reolver` is kept as a back-compat alias for the typo; new code should use
+  `Do53_resolver`.
 - `connectMe` and `v2rayChecker` shell out via `subprocess.Popen([cmd], shell=True)` — mild
   security smell, kept for compatibility with the original behavior.
 
@@ -144,8 +152,11 @@ shadowChecker, sslocal2ssURI, ssURI2sslocal`. All accept `--version` and `--help
   `importlib.metadata.version` doesn't match `proxyUtil.__version__` the install is stale —
   run `uv sync --reinstall-package proxyUtil`.
 
-## Known follow-ups (not in 0.2.0)
+## Known follow-ups
 
-- Add proper type annotations to `myUtil.py` regex/parse helpers so basedpyright can drop
-  the per-rule ignores currently set in `pyproject.toml`.
-- Consider gating `downloadZray` behind an env flag rather than a docstring warning.
+- Cross-module dedup between `xray.py` and `singbox.py` — both have separate transport
+  dispatch (`_TRANSPORT_BUILDERS` vs `_transport_block`) and TLS-block builders consuming
+  the same URL keys. Trojan's transport handling is intentionally narrower than vmess's,
+  so unification needs care.
+- Consider gating `downloadZray` / `downloadSingBox` behind an env flag rather than a
+  docstring warning.

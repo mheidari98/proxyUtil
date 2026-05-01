@@ -1,7 +1,7 @@
 # proxyUtil
 
 CLI suite for shadowsocks / vmess / vless / trojan and DNS utilities.
-Current version: **0.2.0**. Python: **>=3.10**. License: MIT.
+Current version: **0.4.0**. Python: **>=3.10**. License: MIT.
 
 ## Requirements
 - [python 3.10+](https://www.python.org/downloads)
@@ -17,6 +17,9 @@ Current version: **0.2.0**. Python: **>=3.10**. License: MIT.
   ```console
   sudo bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
   ```
+- (optional, for `connectMe` / `v2rayChecker`, validates hysteria/hysteria2/tuic/anytls/etc.)
+  [sing-box](https://sing-box.sagernet.org/installation/) — `connectMe` and `v2rayChecker`
+  will offer to download a release binary on first run if the binary is not on `PATH`.
 
 ## Install
 ```console
