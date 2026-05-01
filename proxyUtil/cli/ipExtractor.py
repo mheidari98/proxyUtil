@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
-#########################################################################
-# Exctraction IP from shadowsocks, vmess, vless, trojan links           #
-#                                                                       #
-# Usage: ipExtractor "vmess://..." -o output.txt                        #
-#  -o: output file                                                      #
-# Output:                                                               #
-#   IP list                                                             #
-##########################################################################
+"""Extract IPs from shadowsocks, vmess, vless, trojan links."""
 import argparse
 import ipaddress
 import logging
-import os
 import sys
+from pathlib import Path
 
 from proxyUtil._common import add_version_arg
 from proxyUtil.dnsUtil import isIPv4, isIPv6
@@ -30,14 +23,10 @@ def main(argv=None):
     )
     add_version_arg(parser)
     parser.add_argument("-f", "--file", help="file contain proxy")
-    parser.add_argument(
-        "--stdin", help="get proxies from stdin", action="store_true", default=False
-    )
+    parser.add_argument("--stdin", help="get proxies from stdin", action="store_true")
     parser.add_argument("--url", help="get proxies from url")
-    parser.add_argument("--sort", help="sort output", action="store_true", default=False)
-    parser.add_argument(
-        "-v", "--verbose", help="increase output verbosity", action="store_true", default=False
-    )
+    parser.add_argument("--sort", help="sort output", action="store_true")
+    parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
     parser.add_argument("-o", "--output", help="output file")
     args = parser.parse_args(argv)
 
@@ -46,9 +35,8 @@ def main(argv=None):
 
     if args.stdin:
         proxies = parseContent(sys.stdin.read().strip())
-    elif args.file and os.path.isfile(args.file):
-        with open(args.file, encoding="UTF-8") as file:
-            proxies = parseContent(file.read().strip())
+    elif args.file and (fp := Path(args.file)).is_file():
+        proxies = parseContent(fp.read_text(encoding="UTF-8").strip())
     elif args.url:
         proxies = ScrapURL(args.url)
     else:
@@ -57,18 +45,17 @@ def main(argv=None):
 
     logging.info(f"Total proxies: {len(proxies)}")
 
-    ips = list(filter(None, map(extractIPs, proxies)))
+    ips = [ip for ip in (extractIPs(p) for p in proxies) if ip]
 
     if args.sort:
         ips = [ip for ip in ips if isIPv4(ip) or isIPv6(ip)]
-        ips = sorted(ips, key=lambda ip: int(ipaddress.IPv4Address(ip)))
+        ips.sort(key=lambda ip: (ipaddress.ip_address(ip).version, int(ipaddress.ip_address(ip))))
 
-    outputs = "\n".join(ips)
+    output = "\n".join(ips)
     if args.output:
-        with open(args.output, "w", encoding="UTF-8") as f:
-            f.write(outputs)
+        Path(args.output).write_text(output, encoding="UTF-8")
     else:
-        print(outputs)
+        print(output)
 
 
 if __name__ == "__main__":

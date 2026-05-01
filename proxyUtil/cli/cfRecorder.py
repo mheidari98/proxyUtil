@@ -3,9 +3,9 @@
 # API tokens: https://dash.cloudflare.com/profile/api-tokens
 # Cannot use this API for domains with .cf, .ga, .gq, .ml, or .tk TLDs.
 import argparse
-import os
 import re
 import sys
+from pathlib import Path
 
 from cloudflare import APIError, Cloudflare
 from rich.console import Console
@@ -47,13 +47,12 @@ def main(argv=None):
 
     if args.stdin:
         raw = sys.stdin.read()
-    elif args.file and os.path.isfile(args.file):
-        with open(args.file, encoding="UTF-8") as f:
-            raw = f.read()
+    elif args.file and (fp := Path(args.file)).is_file():
+        raw = fp.read_text(encoding="UTF-8")
     else:
         raw = input("IP(s): ")
 
-    IPs = [ip.strip() for ip in raw.split() if isIPv4(ip.strip())]
+    IPs = [s for ip in raw.split() if isIPv4(s := ip.strip())]
     if not IPs:
         console.print("No valid IP(s) found", style="bold red")
         return 1

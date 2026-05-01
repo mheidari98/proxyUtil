@@ -12,7 +12,7 @@ from proxyUtil.dnsUrl import Do53_URLS, DoH_URLS, DoT_URLS
 from proxyUtil.dnsUtil import (
     DEFAULT_TIMEOUT,
     RR,
-    Do53_reolver,
+    Do53_resolver,
     DoH_resolver,
     DoT_resolver,
 )
@@ -47,11 +47,11 @@ def main(argv=None):
         default=DEFAULT_TIMEOUT,
         type=float,
     )
-    parser.add_argument("--do53", help="check DNS over UDP", action="store_true", default=False)
-    parser.add_argument("--doh", help="check DNS over HTTPS", action="store_true", default=False)
-    parser.add_argument("--dot", help="check DNS over TLS", action="store_true", default=False)
+    parser.add_argument("--do53", help="check DNS over UDP", action="store_true")
+    parser.add_argument("--doh", help="check DNS over HTTPS", action="store_true")
+    parser.add_argument("--dot", help="check DNS over TLS", action="store_true")
     parser.add_argument(
-        "--all", help="check all DNS over UDP, DoH and DoT", action="store_true", default=False
+        "--all", help="check all DNS over UDP, DoH and DoT", action="store_true"
     )
     args = parser.parse_args(argv)
 
@@ -59,9 +59,7 @@ def main(argv=None):
         logging.getLogger().setLevel(logging.INFO)
 
     if args.all:
-        args.do53 = True
-        args.doh = True
-        args.dot = True
+        args.do53 = args.doh = args.dot = True
 
     logging.info(f"Domain: {args.domain}")
     logging.info(f"Record type: {args.rr}")
@@ -73,38 +71,31 @@ def main(argv=None):
         row_styles=["dim", ""],
         highlight=True,
     )
-
     table.add_column("DNS NAME", style="bright_cyan", justify="center")
     table.add_column("DNS IP", style="bright_cyan", justify="center")
     table.add_column("Time", style="bright_yellow", justify="center")
     table.add_column("IPs", style="bright_green", justify="center")
 
-    results = []
-
+    probes = []
     if args.do53:
-        for name, servers in Do53_URLS.items():
-            for server in servers:
-                dnsTime, ips = Do53_reolver(args.domain, args.rr, server, args.request_dnssec)
-                results.append((name, server, dnsTime * 100, ips))
-
+        probes.append((Do53_resolver, Do53_URLS))
     if args.dot:
-        for name, servers in DoT_URLS.items():
-            for server in servers:
-                dnsTime, ips = DoT_resolver(args.domain, args.rr, server, args.request_dnssec)
-                results.append((name, server, dnsTime * 100, ips))
-
+        probes.append((DoT_resolver, DoT_URLS))
     if args.doh:
-        for name, servers in DoH_URLS.items():
-            for server in servers:
-                dnsTime, ips = DoH_resolver(args.domain, args.rr, server, args.request_dnssec)
-                results.append((name, server, dnsTime * 100, ips))
+        probes.append((DoH_resolver, DoH_URLS))
+
+    results = [
+        (name, server, dnsTime * 100, ips)
+        for resolver, urls in probes
+        for name, servers in urls.items()
+        for server in servers
+        for dnsTime, ips in [resolver(args.domain, args.rr, server, args.request_dnssec)]
+    ]
 
     results.sort(key=lambda x: x[2])
-    for result in results:
-        table.add_row(result[0], result[1], f"{result[2]:.2f} ms", ", ".join(result[3]))
+    for name, server, ms, ips in results:
+        table.add_row(name, server, f"{ms:.2f} ms", ", ".join(ips))
 
-    # time.sleep(0.1)
-    # clearScreen()
     console.print(table)
 
 
