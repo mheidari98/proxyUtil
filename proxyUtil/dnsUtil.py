@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import ipaddress
 import logging
 import re
-import socket
-import urllib
+import urllib.parse
 
 import dns.message  # pip install dnspython[doh,dnssec,idna]
 import dns.name
@@ -16,6 +17,7 @@ __all__ = [
     "RR",
     "Do53_DEFAULT_ENDPOINT",
     "Do53_reolver",
+    "Do53_resolver",
     "DoH_DEFAULT_ENDPOINT",
     "DoH_resolver",
     "DoT_DEFAULT_ENDPOINT",
@@ -37,86 +39,88 @@ FILTER_CIDRs = ["0.0.0.0/32", "10.10.34.0/24"]
 
 RR = ["A", "AAAA", "CNAME", "MX", "NS", "SOA", "SPF", "SRV", "TXT", "CAA", "DNSKEY", "DS"]
 
+_URL_RE = re.compile(r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+")
+
 
 def isFilter(ip, CIDR_LIST=FILTER_CIDRs):
-    return any(ipaddress.ip_address(ip) in ipaddress.ip_network(cidr) for cidr in CIDR_LIST)
+    addr = ipaddress.ip_address(ip)
+    return any(addr in ipaddress.ip_network(cidr) for cidr in CIDR_LIST)
 
 
 def findURLs(text):
-    regex = r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
-    urls = re.findall(regex, text)
-    return urls if urls else []
+    return _URL_RE.findall(text)
 
 
 def scrapeDoH():
     URL = "https://github.com/curl/curl/wiki/DNS-over-HTTPS"
     page = requests.get(URL)
     soup = BeautifulSoup(page.content, "html.parser")
-    results = soup.find_all("tbody")[0].find_all("tr")
+    rows = soup.find_all("tbody")[0].find_all("tr")
     doh = {}
-    for row in results[1:]:
+    for row in rows[1:]:
         data = row.find_all("td")
         name = data[0].text.strip()
-        # urls = findURLs( data[1].text )
-        urls = [aTag.get("href") for aTag in data[1].find_all("a")]
-        if urls:
+        if urls := [a.get("href") for a in data[1].find_all("a")]:
             doh[name] = urls
     return doh
 
 
 def isIPv4(ip):
     try:
-        socket.inet_pton(socket.AF_INET, ip)
-    except AttributeError:  # no inet_pton here, sorry
-        try:
-            socket.inet_aton(ip)
-        except OSError:
-            return False
-        return ip.count(".") == 3
-    except OSError:  # not a valid address
+        return isinstance(ipaddress.ip_address(ip), ipaddress.IPv4Address)
+    except ValueError:
         return False
-    return True
 
 
 def isIPv6(ip):
     try:
-        socket.inet_pton(socket.AF_INET6, ip)
-    except OSError:  # not a valid address
+        return isinstance(ipaddress.ip_address(ip), ipaddress.IPv6Address)
+    except ValueError:
         return False
-    return True
 
 
-def Do53_reolver(
-    domain, rr="A", endpoint=Do53_DEFAULT_ENDPOINT, request_dnssec=False, timeout=DEFAULT_TIMEOUT
-):
+def _log_resolution(proto, domain, ips, endpoint, elapsed):
+    if any(isFilter(ip) for ip in ips):
+        logging.critical(f"[{proto}] {domain} resolved to {ips} using {endpoint} is Filtered")
+    else:
+        logging.info(f"[{proto}] {domain} resolved to {ips} in {elapsed} seconds using {endpoint}")
+
+
+def _resolve(proto, domain, rr, endpoint, request_dnssec, timeout, query_fn):
     qname = dns.name.from_text(domain)
     rdtype = dns.rdatatype.from_text(rr)
     req = dns.message.make_query(qname, rdtype, want_dnssec=request_dnssec)
     try:
-        res, _tcp = dns.query.udp_with_fallback(req, endpoint, timeout=timeout)
+        res = query_fn(req)
         ips = [item.address for answer in res.answer for item in answer]
-        if any(isFilter(ip) for ip in ips):
-            logging.critical(f"[Do53] {domain} resolved to {ips} using {endpoint} is Filtered")
-        else:
-            logging.info(
-                f"[Do53] {domain} resolved to {ips} in {res.time} seconds using {endpoint}"
-            )
-        return res.time, ips
+        _log_resolution(proto, domain, ips, endpoint, res.time)
+        return float(res.time), ips
     except Exception as e:
-        logging.error(f"[Do53] Failed to resolve {domain} using {endpoint} : {e}")
+        logging.error(f"[{proto}] Failed to resolve {domain} using {endpoint} : {e}")
         return timeout, []
+
+
+def Do53_resolver(
+    domain, rr="A", endpoint=Do53_DEFAULT_ENDPOINT, request_dnssec=False, timeout=DEFAULT_TIMEOUT
+):
+    def query(req):
+        res, _tcp = dns.query.udp_with_fallback(req, endpoint, timeout=timeout)
+        return res
+
+    return _resolve("Do53", domain, rr, endpoint, request_dnssec, timeout, query)
+
+
+# typo-preserving alias for backward compatibility
+Do53_reolver = Do53_resolver
 
 
 def DoT_resolver(
     domain, rr="A", endpoint=DoT_DEFAULT_ENDPOINT, request_dnssec=False, timeout=DEFAULT_TIMEOUT
 ):
-    qname = dns.name.from_text(domain)
-    rdtype = dns.rdatatype.from_text(rr)
-    req = dns.message.make_query(qname, rdtype, want_dnssec=request_dnssec)
     finalEndpoint = endpoint
     if not isIPv4(endpoint) and not isIPv6(endpoint):
         hostname = urllib.parse.urlparse(endpoint).hostname
-        _dnsTime, ips = Do53_reolver(hostname, "A")
+        _, ips = Do53_resolver(hostname, "A")
         if not ips:
             logging.error(f"[DoT] Failed to resolve {endpoint} using Do53")
             return timeout, []
@@ -124,33 +128,17 @@ def DoT_resolver(
             logging.error(f"[DoT] {endpoint} resolved to {ips} is Filtered")
             return timeout, []
         finalEndpoint = ips[0]
-    try:
-        res = dns.query.tls(req, finalEndpoint, timeout=timeout)
-        ips = [item.address for answer in res.answer for item in answer]
-        if any(isFilter(ip) for ip in ips):
-            logging.critical(f"[DoT] {domain} resolved to {ips} using {endpoint} is Filtered")
-        else:
-            logging.info(f"[DoT] {domain} resolved to {ips} in {res.time} seconds using {endpoint}")
-        return float(res.time), ips
-    except Exception as e:
-        logging.error(f"[DoT] Failed to resolve {domain} using {endpoint} : {e}")
-        return timeout, []
+
+    return _resolve(
+        "DoT", domain, rr, endpoint, request_dnssec, timeout,
+        lambda req: dns.query.tls(req, finalEndpoint, timeout=timeout),
+    )
 
 
 def DoH_resolver(
     domain, rr="A", endpoint=DoH_DEFAULT_ENDPOINT, request_dnssec=False, timeout=DEFAULT_TIMEOUT
 ):
-    qname = dns.name.from_text(domain)
-    rdtype = dns.rdatatype.from_text(rr)
-    req = dns.message.make_query(qname, rdtype, want_dnssec=request_dnssec)
-    try:
-        res = dns.query.https(req, endpoint, timeout=timeout)
-        ips = [item.address for answer in res.answer for item in answer]
-        if any(isFilter(ip) for ip in ips):
-            logging.critical(f"[DoH] {domain} resolved to {ips} using {endpoint} is Filtered")
-        else:
-            logging.info(f"[DoH] {domain} resolved to {ips} in {res.time} seconds using {endpoint}")
-        return float(res.time), ips
-    except Exception as e:
-        logging.error(f"[DoH] Failed to resolve {domain} using {endpoint} : {e}")
-        return timeout, []
+    return _resolve(
+        "DoH", domain, rr, endpoint, request_dnssec, timeout,
+        lambda req: dns.query.https(req, endpoint, timeout=timeout),
+    )
