@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from argparse import ArgumentParser
+from pathlib import Path
 
 from . import __version__
 
@@ -33,12 +33,7 @@ def add_source_args(parser: ArgumentParser, *, with_reuse: bool = True) -> None:
 
 
 def collect_proxies(args, *, free_url: str, patterns=None, output_path: str | None = None):
-    """Aggregate proxies from `-f/--url/--stdin/--free/--reuse` into a deduped list.
-
-    `patterns` (when given) restricts the schemes accepted by `parseContent` /
-    `ScrapURL`. `output_path` defaults to `args.output` and is only consulted
-    when `args.reuse` is truthy.
-    """
+    """Aggregate proxies from `-f/--url/--stdin/--free/--reuse` into a deduped list."""
     from .net import ScrapURL
     from .parsers import parseContent
 
@@ -48,14 +43,16 @@ def collect_proxies(args, *, free_url: str, patterns=None, output_path: str | No
 
     lines: set[str] = set()
 
-    if args.file and os.path.isfile(args.file):
-        with open(args.file, encoding="UTF-8") as fh:
-            lines.update(parseContent(fh.read().strip(), *parse_extra))
-            logging.info(f"got {len(lines)} from reading proxy from file")
+    if args.file and (fp := Path(args.file)).is_file():
+        lines.update(parseContent(fp.read_text(encoding="UTF-8").strip(), *parse_extra))
+        logging.info(f"got {len(lines)} from reading proxy from file")
 
-    if getattr(args, "reuse", False) and output_path and os.path.isfile(output_path):
-        with open(output_path, encoding="UTF-8") as fh:
-            lines.update(parseContent(fh.read().strip(), *parse_extra))
+    if (
+        getattr(args, "reuse", False)
+        and output_path
+        and (op := Path(output_path)).is_file()
+    ):
+        lines.update(parseContent(op.read_text(encoding="UTF-8").strip(), *parse_extra))
 
     if args.url:
         lines.update(ScrapURL(args.url, *scrap_extra))

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import logging
+from pathlib import Path
 
 from proxyUtil._common import add_version_arg
 from proxyUtil.logFormatter import CustomFormatter
@@ -22,19 +23,18 @@ def main(argv=None):
     results = []
     if args.input:
         results.append(sslocal2ssURI(args.input))
-
     if args.file:
-        with open(args.file) as fh:
-            for line in fh:
-                if "ss-local" in line:
-                    results.append(sslocal2ssURI(line.rstrip()))
+        results.extend(
+            sslocal2ssURI(line.rstrip())
+            for line in Path(args.file).read_text().splitlines()
+            if "ss-local" in line
+        )
 
-    outputs = "\n".join(results)
+    output = "\n".join(results)
     if args.output:
-        with open(args.output, "w") as f:
-            f.write(outputs)
+        Path(args.output).write_text(output)
     else:
-        print(outputs)
+        print(output)
 
 
 if __name__ == "__main__":
