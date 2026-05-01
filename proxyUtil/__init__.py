@@ -1,8 +1,11 @@
 """proxyUtil — CLI suite for shadowsocks / vmess / vless / trojan / DNS utilities.
 
-The package public surface is intentionally narrow: the version string. Submodules
-(``proxyUtil.myUtil``, ``proxyUtil.dnsUtil``, ``proxyUtil.dnsUrl``, ``proxyUtil.network``,
-``proxyUtil.logFormatter``) expose their own ``__all__`` and should be imported explicitly.
+Public surface is the version string. Library modules with explicit ``__all__``:
+``parsers`` (URL parsers), ``uri`` (URL builders), ``schemes`` (scheme constants),
+``xray`` and ``singbox`` (per-core config builders), ``cores`` (registry), ``net``
+(network-side-effect helpers), ``os_glue`` (process / OS), ``shadowsocks``
+(ss-libev cmdline), ``utils`` (primitives), ``dnsUtil`` / ``dnsUrl`` /
+``logFormatter``.
 """
 
 from .__version__ import __version__

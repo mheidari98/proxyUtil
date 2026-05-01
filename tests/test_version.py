@@ -4,7 +4,7 @@ import proxyUtil
 
 
 def test_version_string():
-    assert proxyUtil.__version__ == "0.2.0"
+    assert proxyUtil.__version__ == "0.4.0"
 
 
 def test_metadata_matches_module():

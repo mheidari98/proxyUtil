@@ -48,11 +48,11 @@ dev = [
 ]
 
 [project.scripts]
-cdnGen        = "proxyUtil.cdnGen:main"
-dnsChecker    = "proxyUtil.dnsChecker:main"
-cfRecorder    = "proxyUtil.cfRecorder:main"
-ipExtractor   = "proxyUtil.ipExtractor:main"
-v2rayChecker  = "proxyUtil.v2rayChecker:main"
+cdnGen        = "proxyUtil.cli.cdnGen:main"
+dnsChecker    = "proxyUtil.cli.dnsChecker:main"
+cfRecorder    = "proxyUtil.cli.cfRecorder:main"
+ipExtractor   = "proxyUtil.cli.ipExtractor:main"
+v2rayChecker  = "proxyUtil.cli.v2rayChecker:main"
 clashGen      = "proxyUtil.cli.clashGen:main"
 connectMe     = "proxyUtil.cli.connectMe:main"
 shadowChecker = "proxyUtil.cli.shadowChecker:main"

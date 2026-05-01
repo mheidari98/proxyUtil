@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import logging
-import os
 import subprocess
 import sys
 import time
@@ -10,10 +9,11 @@ from urllib.parse import quote
 import requests
 from ruamel.yaml import YAML
 
-from proxyUtil._common import add_version_arg
+from proxyUtil._common import add_source_args, add_version_arg, collect_proxies
+from proxyUtil.cli.shadowChecker import FREE_SS_URL
 from proxyUtil.logFormatter import CustomFormatter
-from proxyUtil.myUtil import CLASH_SAMPLE_PATH, installDocker, parseContent
-from proxyUtil.network import ScrapURL
+from proxyUtil.os_glue import installDocker
+from proxyUtil.xray import CLASH_SAMPLE_PATH
 
 # https://github.com/blackmatrix7/ios_rule_script/tree/master/rule/Clash
 # https://github.com/ACL4SSR/ACL4SSR/tree/master/Clash
@@ -94,10 +94,7 @@ def _get_rule_set(yaml_safe, behavior, url, policy="DIRECT"):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Simple Clash Config Generator")
     add_version_arg(parser)
-    parser.add_argument("-f", "--file", help="file contain ss proxy")
-    parser.add_argument("--url", help="get proxy from url")
-    parser.add_argument("--stdin", help="get proxy from stdin", action="store_true")
-    parser.add_argument("--free", help="get free proxy", action="store_true")
+    add_source_args(parser, with_reuse=False)
     parser.add_argument("--dns", help="use DNS server", action="store_true")
     parser.add_argument("--rule", help="use rules", action="store_true")
     parser.add_argument("--premium", help="use Clash Premium Features", action="store_true")
@@ -122,22 +119,7 @@ def main(argv=None):
     yaml_rt.indent(mapping=4, sequence=4, offset=2)
     yaml_safe = YAML(typ="safe")
 
-    lines = set()
-    if args.file and os.path.isfile(args.file):
-        with open(args.file, encoding="UTF-8") as fh:
-            lines.update(parseContent(fh.read().strip()))
-            logging.info(f"got {len(lines)} from reading proxy from file")
-
-    if args.url:
-        lines.update(ScrapURL(args.url))
-
-    if args.free:
-        lines.update(ScrapURL("https://raw.githubusercontent.com/freefq/free/master/v2"))
-
-    if args.stdin:
-        lines.update(parseContent(sys.stdin.read()))
-
-    lines = list(lines)
+    lines = collect_proxies(args, free_url=FREE_SS_URL)
     logging.info(f"We have {len(lines)} proxy")
 
     if not lines:

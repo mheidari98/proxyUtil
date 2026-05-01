@@ -1,16 +1,10 @@
-"""Unit tests for misc pure helpers in proxyUtil.myUtil."""
+"""Unit tests for misc pure helpers."""
 
 import functools
 import operator
 
-from proxyUtil.myUtil import (
-    checkPatternsInList,
-    is_json,
-    mergeMultiDicts,
-    parseContent,
-    split2Npart,
-    tagChanger,
-)
+from proxyUtil.parsers import checkPatternsInList, parseContent, tagChanger
+from proxyUtil.utils import is_json, mergeMultiDicts, split2Npart
 
 
 def test_split2Npart_distributes_items():

@@ -4,7 +4,9 @@ import logging
 
 from proxyUtil._common import add_version_arg
 from proxyUtil.logFormatter import CustomFormatter
-from proxyUtil.myUtil import parseContent, ss_scheme, ssURI2sslocal
+from proxyUtil.parsers import parseContent
+from proxyUtil.schemes import ss_scheme
+from proxyUtil.shadowsocks import ssURI2sslocal
 
 
 def main(argv=None):
