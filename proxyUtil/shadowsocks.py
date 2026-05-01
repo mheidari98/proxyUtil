@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+from pathlib import Path
 
 from .parsers import parse_ss_withPlugin
 from .utils import finder
@@ -15,8 +17,6 @@ __all__ = [
 
 
 def sslocal2ssURI(cmd):
-    import base64
-
     server = finder(cmd, "-s")
     server_port = finder(cmd, "-p")
     method = finder(cmd, "-m")
@@ -27,16 +27,12 @@ def sslocal2ssURI(cmd):
 
 def ssURI2sslocal(ss_url, localPort=1080, file2storePID=""):
     server, server_port, method, password, plugin, plugin_opts, _tag = parse_ss_withPlugin(ss_url)
-    extended = ""
-    if plugin or plugin_opts:
-        extended = f" --plugin {plugin} --plugin-opts '{plugin_opts}'"
-    cmd = (
+    extended = f" --plugin {plugin} --plugin-opts '{plugin_opts}'" if (plugin or plugin_opts) else ""
+    pid_part = f" -f {file2storePID}" if file2storePID else ""
+    return (
         f"ss-local -s {server} -p {server_port} -l {localPort} "
-        f"-m {method} -k '{password}'{extended}"
+        f"-m {method} -k '{password}'{extended}{pid_part}"
     )
-    if file2storePID:
-        cmd += f" -f {file2storePID}"
-    return cmd
 
 
 def ssConfig2json(ss_url, local_port=1080, configFile="CONFIG.json"):
@@ -51,5 +47,4 @@ def ssConfig2json(ss_url, local_port=1080, configFile="CONFIG.json"):
         "plugin": plugin,
         "plugin_opts": plugin_opts,
     }
-    with open(configFile, "w", encoding="utf-8") as f:
-        json.dump(config, f, ensure_ascii=False, indent=4)
+    Path(configFile).write_text(json.dumps(config, ensure_ascii=False, indent=4), encoding="utf-8")

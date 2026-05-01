@@ -14,40 +14,32 @@ __all__ = [
 ]
 
 
+def _ss_userinfo(method: str, password: str, *, strip_pad: bool = False) -> str:
+    encoded = base64.urlsafe_b64encode(f"{method}:{password}".encode()).decode()
+    return encoded.replace("=", "") if strip_pad else encoded
+
+
 def Create_ss_url(server, server_port, method, password):
-    return (
-        "ss://"
-        + base64.urlsafe_b64encode((method + ":" + password).encode()).decode("utf-8")
-        + f"@{server}:{server_port}"
-    )
+    return f"ss://{_ss_userinfo(method, password)}@{server}:{server_port}"
 
 
 def Create_ss_url_withPlugin(
     server, server_port, method, password, plugin="", plugin_opts="", tag=""
 ):
-    extended = ""
-    if plugin or plugin_opts:
-        extended = f"/?plugin={quote_plus(f'{plugin};{plugin_opts}')}"
-    tag = tag if tag else "Woman,Life,Freedom"
-    userinfo = (
-        base64.urlsafe_b64encode((method + ":" + password).encode())
-        .decode("utf-8")
-        .replace("=", "")
-    )
+    extended = f"/?plugin={quote_plus(f'{plugin};{plugin_opts}')}" if (plugin or plugin_opts) else ""
+    tag = tag or "Woman,Life,Freedom"
+    userinfo = _ss_userinfo(method, password, strip_pad=True)
     return f"ss://{userinfo}@{server}:{server_port}{extended}#{tag}"
 
 
 def Create_vmess_url(jsonLoad):
-    return (
-        "vmess://"
-        + base64.b64encode(json.dumps(jsonLoad, indent=4).encode("utf-8") + b"\n").decode()
-    )
+    payload = json.dumps(jsonLoad, indent=4).encode("utf-8") + b"\n"
+    return f"vmess://{base64.b64encode(payload).decode()}"
 
 
 def processShadowJson(jsonTxt):
     """Convert SIP008 / shadowsocks JSON array to a list of `ss://...` URLs."""
-    result = []
-    for line in json.loads(jsonTxt):
-        ss = Create_ss_url(line["server"], line["server_port"], line["method"], line["password"])
-        result.append(ss)
-    return result
+    return [
+        Create_ss_url(item["server"], item["server_port"], item["method"], item["password"])
+        for item in json.loads(jsonTxt)
+    ]
