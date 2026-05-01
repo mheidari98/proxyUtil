@@ -91,9 +91,8 @@ def main(argv=None):
                 return 1
             logging.info(f"using {spec.name} at {binary}")
             configName = spec.write_config(args.link, args.lport, tempdir)
-            if configName is None:
-                return None
-            _spawn(spec.run_argv(binary, configName), spec.name)
+            if configName is not None:
+                _spawn(spec.run_argv(binary, configName), spec.name)
 
         if args.system:
             set_system_proxy(enable=False)

@@ -184,9 +184,8 @@ def main(argv=None):
                 logging.info("CTRL+C pressed")
 
     liveProxy.sort(key=lambda x: x[1])
-    Path(args.output).write_text(
-        "\n".join(url for url, _ping in liveProxy) + "\n", encoding="utf-8"
-    )
+    body = "".join(f"{url}\n" for url, _ping in liveProxy)
+    Path(args.output).write_text(body, encoding="utf-8")
     return None
 
 
