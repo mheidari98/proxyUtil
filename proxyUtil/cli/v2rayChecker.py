@@ -10,6 +10,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from proxyUtil import cores
@@ -44,10 +45,7 @@ class CheckerCfg:
 
 def Checker(proxyList, localPort, testDomain, timeOut, cfg: CheckerCfg):
     liveProxy = []
-
-    proxy = PROXIES.copy()
-    proxy["http"] = proxy["http"].format(LOCAL_PORT=localPort)
-    proxy["https"] = proxy["https"].format(LOCAL_PORT=localPort)
+    proxy = {k: v.format(LOCAL_PORT=localPort) for k, v in PROXIES.items()}
 
     for url in proxyList:
         if cfg.cancel.is_set():
@@ -186,9 +184,9 @@ def main(argv=None):
                 logging.info("CTRL+C pressed")
 
     liveProxy.sort(key=lambda x: x[1])
-    with open(args.output, "w", encoding="utf-8") as f:
-        for ss_url in liveProxy:
-            f.write(f"{ss_url[0]}\n")
+    Path(args.output).write_text(
+        "\n".join(url for url, _ping in liveProxy) + "\n", encoding="utf-8"
+    )
     return None
 
 

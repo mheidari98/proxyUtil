@@ -10,6 +10,7 @@ import signal
 import subprocess
 import tempfile
 import time
+from pathlib import Path
 
 from proxyUtil._common import (
     add_source_args,
@@ -31,16 +32,11 @@ FREE_SS_URL = "https://raw.githubusercontent.com/freefq/free/master/v2"
 
 def _checker(shadowList, localPort, testDomain, timeOut, tempdir):
     liveProxy = []
-    proxy = PROXIES.copy()
-    proxy["http"] = proxy["http"].format(LOCAL_PORT=localPort)
-    proxy["https"] = proxy["https"].format(LOCAL_PORT=localPort)
-
+    proxy = {k: v.format(LOCAL_PORT=localPort) for k, v in PROXIES.items()}
     pidPath = f"{tempdir}/ss.pid.{localPort}"
 
     for ss_url in shadowList:
-        server, _server_port, _method, _password, _plugin, _plugin_opts, _tag = parse_ss_withPlugin(
-            ss_url
-        )
+        server, *_ = parse_ss_withPlugin(ss_url)
 
         if not isIPv4(server) and not isIPv6(server) and not getIP(server):
             continue
@@ -49,8 +45,7 @@ def _checker(shadowList, localPort, testDomain, timeOut, tempdir):
         subprocess.run(shlex.split(cmd), check=False)
         time.sleep(0.2)
 
-        ping = is_alive(testDomain, proxy, timeOut)
-        if ping:
+        if ping := is_alive(testDomain, proxy, timeOut):
             liveProxy.append((ss_url, ping))
             ip, country, country_code = getIPnCountry(proxy, timeOut)
             if ip is None:
@@ -61,8 +56,7 @@ def _checker(shadowList, localPort, testDomain, timeOut, tempdir):
             logging.debug(f"[dead] ip={server}")
 
         try:
-            with open(pidPath) as fh:
-                pid = int(fh.read().strip())
+            pid = int(Path(pidPath).read_text().strip())
             os.kill(pid, signal.SIGKILL)
         except (FileNotFoundError, ValueError, ProcessLookupError):
             pass
@@ -130,11 +124,9 @@ def main(argv=None):
                 itertools.repeat(tempdir, N),
             )
 
-        liveProxy = list(itertools.chain(*results))
+        liveProxy = list(itertools.chain.from_iterable(results))
         liveProxy.sort(key=lambda x: x[1])
-        with open(args.output, "w") as f:
-            for ss_url in liveProxy:
-                f.write(f"{ss_url[0]}\n")
+        Path(args.output).write_text("\n".join(url for url, _ in liveProxy) + "\n")
     finally:
         shutil.rmtree(tempdir, ignore_errors=True)
 
