@@ -181,9 +181,12 @@ def main(argv=None):
     myclash["proxies"] = clashyml["proxies"]
 
     extended = [
-        "🔥 Auto(Best ping)", "Auto-Fallback",
-        "⚖️ load-balance hash", "⚖️ load-balance round-robin",
-        "DIRECT", "REJECT",
+        "🔥 Auto(Best ping)",
+        "Auto-Fallback",
+        "⚖️ load-balance hash",
+        "⚖️ load-balance round-robin",
+        "DIRECT",
+        "REJECT",
     ]
     myclash["proxy-groups"][0]["proxies"] = extended + proxyNames
     for i in range(1, 5):

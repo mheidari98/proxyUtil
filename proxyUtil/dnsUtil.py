@@ -39,7 +39,9 @@ FILTER_CIDRs = ["0.0.0.0/32", "10.10.34.0/24"]
 
 RR = ["A", "AAAA", "CNAME", "MX", "NS", "SOA", "SPF", "SRV", "TXT", "CAA", "DNSKEY", "DS"]
 
-_URL_RE = re.compile(r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+")
+_URL_RE = re.compile(
+    r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
+)
 
 
 def isFilter(ip, CIDR_LIST=FILTER_CIDRs):
@@ -130,7 +132,12 @@ def DoT_resolver(
         finalEndpoint = ips[0]
 
     return _resolve(
-        "DoT", domain, rr, endpoint, request_dnssec, timeout,
+        "DoT",
+        domain,
+        rr,
+        endpoint,
+        request_dnssec,
+        timeout,
         lambda req: dns.query.tls(req, finalEndpoint, timeout=timeout),
     )
 
@@ -139,6 +146,11 @@ def DoH_resolver(
     domain, rr="A", endpoint=DoH_DEFAULT_ENDPOINT, request_dnssec=False, timeout=DEFAULT_TIMEOUT
 ):
     return _resolve(
-        "DoH", domain, rr, endpoint, request_dnssec, timeout,
+        "DoH",
+        domain,
+        rr,
+        endpoint,
+        request_dnssec,
+        timeout,
         lambda req: dns.query.https(req, endpoint, timeout=timeout),
     )

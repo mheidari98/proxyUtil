@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Generate vmess/vless/trojan URLs with CDN IPs as the address."""
+
 import argparse
 import ipaddress
 import json

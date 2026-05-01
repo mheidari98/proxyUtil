@@ -36,10 +36,16 @@ __all__ = [
     "tagsChanger",
 ]
 
-_KNOWN_SS_PLUGINS = frozenset({
-    "obfs-local", "simple-obfs", "v2ray-plugin",
-    "xray-plugin", "shadow-tls", "kcptun-client",
-})
+_KNOWN_SS_PLUGINS = frozenset(
+    {
+        "obfs-local",
+        "simple-obfs",
+        "v2ray-plugin",
+        "xray-plugin",
+        "shadow-tls",
+        "kcptun-client",
+    }
+)
 
 _RE_SS_USERINFO = re.compile(r"^(.+?):(.+)@(.+):(\d+)")
 _RE_USER_HOSTPORT = re.compile(r"^(.+)@(.+):(\d+)$")
@@ -219,11 +225,13 @@ def parseSsh(loaded):
 def parseWireguard(loaded):
     host, port = _hostport(loaded)
     query = dict(parse_qsl(loaded.query, keep_blank_values=True))
-    query.update({
-        "address": host,
-        "port": port,
-        "private_key": unquote(loaded.username or ""),
-    })
+    query.update(
+        {
+            "address": host,
+            "port": port,
+            "private_key": unquote(loaded.username or ""),
+        }
+    )
     return query
 
 
@@ -251,7 +259,8 @@ def extractIPs(proxy):
 
 def checkPatternsInList(lines, patterns=proxyScheme):
     pattern_res = (
-        _PATTERN_RES if patterns is proxyScheme
+        _PATTERN_RES
+        if patterns is proxyScheme
         else [(p, re.compile(rf"(\S*\s+|^)({re.escape(p)}\S+)")) for p in patterns]
     )
     result = []

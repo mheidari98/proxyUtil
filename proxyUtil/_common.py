@@ -47,11 +47,7 @@ def collect_proxies(args, *, free_url: str, patterns=None, output_path: str | No
         lines.update(parseContent(fp.read_text(encoding="UTF-8").strip(), *parse_extra))
         logging.info(f"got {len(lines)} from reading proxy from file")
 
-    if (
-        getattr(args, "reuse", False)
-        and output_path
-        and (op := Path(output_path)).is_file()
-    ):
+    if getattr(args, "reuse", False) and output_path and (op := Path(output_path)).is_file():
         lines.update(parseContent(op.read_text(encoding="UTF-8").strip(), *parse_extra))
 
     if args.url:

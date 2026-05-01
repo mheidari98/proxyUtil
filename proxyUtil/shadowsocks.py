@@ -27,7 +27,9 @@ def sslocal2ssURI(cmd):
 
 def ssURI2sslocal(ss_url, localPort=1080, file2storePID=""):
     server, server_port, method, password, plugin, plugin_opts, _tag = parse_ss_withPlugin(ss_url)
-    extended = f" --plugin {plugin} --plugin-opts '{plugin_opts}'" if (plugin or plugin_opts) else ""
+    extended = (
+        f" --plugin {plugin} --plugin-opts '{plugin_opts}'" if (plugin or plugin_opts) else ""
+    )
     pid_part = f" -f {file2storePID}" if file2storePID else ""
     return (
         f"ss-local -s {server} -p {server_port} -l {localPort} "
