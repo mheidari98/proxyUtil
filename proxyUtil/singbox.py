@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from .parsers import (
@@ -69,7 +69,7 @@ MIN_SINGBOX_VERSION_ANYTLS = "1.11.0"
 
 _SINGBOX_BASE_TPL = json.dumps(
     {
-        "log": {"level": "warn"},
+        "log": {"level": "panic", "disabled": True},
         "inbounds": [
             {
                 "type": "socks",
@@ -119,40 +119,40 @@ def _reality_block(parsed: dict) -> dict:
 def _transport_block(parsed: dict) -> dict | None:
     """Build sing-box `transport` from xray-style URL keys. None for tcp/none."""
     net = parsed.get("net") or parsed.get("type") or ""
-    if net in ("", "tcp", "raw", "none"):
-        return None
-    if net == "ws":
-        block = {"type": "ws", "path": parsed.get("path", "/")}
-        if parsed.get("host"):
-            block["headers"] = {"Host": parsed["host"]}
-        if parsed.get("ed"):
-            block["max_early_data"] = int(parsed["ed"])
-            block["early_data_header_name"] = "Sec-WebSocket-Protocol"
-        return block
-    if net == "grpc":
-        return {"type": "grpc", "service_name": parsed.get("serviceName") or parsed.get("path", "")}
-    if net in ("h2", "http"):
-        block = {"type": "http", "path": parsed.get("path", "/")}
-        if parsed.get("host"):
-            block["host"] = split_csv(parsed["host"])
-        return block
-    if net == "httpupgrade":
-        block = {"type": "httpupgrade", "path": parsed.get("path", "/")}
-        if parsed.get("host"):
-            block["host"] = parsed["host"]
-        return block
-    if net == "quic":
-        return {"type": "quic"}
-    if net in ("xhttp", "splithttp"):
-        logging.warning(
-            f"sing-box has no {net!r} transport; downgrading to httpupgrade for {parsed.get('add') or parsed.get('address')}"
-        )
-        block = {"type": "httpupgrade", "path": parsed.get("path", "/")}
-        if parsed.get("host"):
-            block["host"] = parsed["host"]
-        return block
-    logging.warning(f"unsupported sing-box transport {net!r}; emitting plain TCP")
-    return None
+    host = parsed.get("host")
+    path = parsed.get("path", "/")
+
+    match net:
+        case "" | "tcp" | "raw" | "none":
+            return None
+        case "ws":
+            block = {"type": "ws", "path": path}
+            if host:
+                block["headers"] = {"Host": host}
+            if ed := parsed.get("ed"):
+                block["max_early_data"] = int(ed)
+                block["early_data_header_name"] = "Sec-WebSocket-Protocol"
+            return block
+        case "grpc":
+            return {"type": "grpc", "service_name": parsed.get("serviceName") or path}
+        case "h2" | "http":
+            block = {"type": "http", "path": path}
+            if host:
+                block["host"] = split_csv(host)
+            return block
+        case "httpupgrade":
+            return {"type": "httpupgrade", "path": path, **({"host": host} if host else {})}
+        case "quic":
+            return {"type": "quic"}
+        case "xhttp" | "splithttp":
+            target = parsed.get("add") or parsed.get("address")
+            logging.warning(
+                f"sing-box has no {net!r} transport; downgrading to httpupgrade for {target}"
+            )
+            return {"type": "httpupgrade", "path": path, **({"host": host} if host else {})}
+        case _:
+            logging.warning(f"unsupported sing-box transport {net!r}; emitting plain TCP")
+            return None
 
 
 def _outbound_hysteria2(parsed):
@@ -355,42 +355,43 @@ def build_singbox_config(url, localPort):
         return None
 
     try:
-        if scheme in ("hysteria2", "hy2"):
-            outbound = _outbound_hysteria2(parseHysteria2(loaded))
-        elif scheme == "hysteria":
-            outbound = _outbound_hysteria(parseHysteria(loaded))
-        elif scheme == "tuic":
-            outbound = _outbound_tuic(parseTuic(loaded))
-        elif scheme == "juicity":
-            tuic = _outbound_tuic(parseJuicity(loaded))
-            tuic["congestion_control"] = "bbr"
-            tuic["udp_relay_mode"] = "native"
-            outbound = tuic
-        elif scheme == "anytls":
-            outbound = _outbound_anytls(parseAnytls(loaded))
-        elif scheme == "shadowtls":
-            outbound = _outbound_shadowtls(parseShadowTls(loaded))
-        elif scheme in ("naive", "naive+https"):
-            outbound = _outbound_naive(parseNaive(loaded))
-        elif scheme == "ssh":
-            outbound = _outbound_ssh(parseSsh(loaded))
-        elif scheme == "wireguard":
-            outbound = _outbound_wireguard(parseWireguard(loaded))
-        elif scheme == "ss":
-            outbound = _outbound_shadowsocks(url)
-        elif scheme == "trojan":
-            outbound = _outbound_trojan(loaded)
-        elif scheme == "vless":
-            outbound = _outbound_vless(loaded)
-        elif scheme == "vmess":
-            payload = url[len("vmess://") :]
-            if not isBase64(payload):
+        match scheme:
+            case "hysteria2" | "hy2":
+                outbound = _outbound_hysteria2(parseHysteria2(loaded))
+            case "hysteria":
+                outbound = _outbound_hysteria(parseHysteria(loaded))
+            case "tuic":
+                outbound = _outbound_tuic(parseTuic(loaded))
+            case "juicity":
+                outbound = _outbound_tuic(parseJuicity(loaded)) | {
+                    "congestion_control": "bbr",
+                    "udp_relay_mode": "native",
+                }
+            case "anytls":
+                outbound = _outbound_anytls(parseAnytls(loaded))
+            case "shadowtls":
+                outbound = _outbound_shadowtls(parseShadowTls(loaded))
+            case "naive" | "naive+https":
+                outbound = _outbound_naive(parseNaive(loaded))
+            case "ssh":
+                outbound = _outbound_ssh(parseSsh(loaded))
+            case "wireguard":
+                outbound = _outbound_wireguard(parseWireguard(loaded))
+            case "ss":
+                outbound = _outbound_shadowsocks(url)
+            case "trojan":
+                outbound = _outbound_trojan(loaded)
+            case "vless":
+                outbound = _outbound_vless(loaded)
+            case "vmess":
+                payload = url[len("vmess://"):]
+                if not isBase64(payload):
+                    return None
+                outbound = _outbound_vmess(json.loads(base64Decode(payload)))
+            case _:
                 return None
-            outbound = _outbound_vmess(json.loads(base64Decode(payload)))
-        else:
-            return None
-    except (KeyError, ValueError, TypeError) as err:
-        logging.error(f"{url} : {err}")
+    except (AttributeError, KeyError, ValueError, TypeError) as err:
+        logging.error(f"skip {url} : {err}")
         return None
 
     config = json.loads(_SINGBOX_BASE_TPL)
@@ -403,7 +404,6 @@ def writeConfig(url, localPort, path):
     config = build_singbox_config(url, localPort)
     if config is None:
         return None
-    name = os.path.join(path, f"singbox_{localPort}.json")
-    with open(name, "w") as f:
-        json.dump(config, f)
+    name = str(Path(path) / f"singbox_{localPort}.json")
+    Path(name).write_text(json.dumps(config))
     return name
