@@ -1,5 +1,133 @@
 # Changes
 
+## 0.4.0 — module split + unified `--core` + full scheme matrix
+
+### Package layout (breaking)
+
+`proxyUtil/myUtil.py` and `proxyUtil/network.py` deleted. The 1100-line god
+file split into focused modules:
+
+- `proxyUtil/utils.py` — `base64Decode`, `isBase64`, `is_json`, `is_valid_uuid`,
+  `generate_uuid`, `getSHA256`, `mergeMultiDicts`, `split2Npart`, `finder`,
+  `silentremove`.
+- `proxyUtil/schemes.py` — scheme constants + `proxyScheme` list.
+- `proxyUtil/uri.py` — `Create_ss_url`, `Create_ss_url_withPlugin`,
+  `Create_vmess_url`, `processShadowJson`.
+- `proxyUtil/parsers.py` — every `parse_*`, `parseContent`,
+  `checkPatternsInList`, `extractIPs`, `tagChanger`, `tagsChanger`. Adds
+  parsers for hysteria2/hy2, hysteria, tuic, anytls, shadowtls, naive, ssh,
+  wireguard, juicity.
+- `proxyUtil/shadowsocks.py` — `ssURI2sslocal`, `sslocal2ssURI`, `ssConfig2json`.
+- `proxyUtil/net.py` — `ScrapURL`, `downloadZray`, `downloadSingBox`,
+  `getIPnCountry`, `is_alive`, `getIP`, `_format_geo`, `IP_API_URL`, `PROXIES`.
+- `proxyUtil/os_glue.py` — OS / process helpers (`get_OS`, `get_arch`,
+  `is_tool`, `is_port_in_use`, `unixRunCore`/`winRunCore`/`unixKillCore`/
+  `winKillCore`, `killProcess`, `installDocker`, `chmodX`, `set_proxychains`,
+  `set_system_proxy`, `clearScreen`, `PROXYCHAINS`).
+- `proxyUtil/xray.py` — xray/v2ray config templates + builders + transport
+  dispatch table + `writeConfig(url, port, path) -> path`.
+- `proxyUtil/singbox.py` — sing-box config builder for every supported scheme,
+  including the schemes xray-core does not speak.
+- `proxyUtil/cores.py` — `REGISTRY` mapping `name -> CoreSpec`; one source of
+  truth for `--core`.
+
+External callers MUST update `from proxyUtil.myUtil import X` to the new module
+paths. There is no shim. Wildcard imports were never re-exported, so this
+mostly affects tests / downstream library users; CLI entry-points are unchanged.
+
+### Unified `--core` selector
+
+`v2rayChecker -c {xray, v2ray, sing-box}` now picks ONE binary. The chosen
+core's `schemes` attribute decides which URLs are validated; everything else
+gets a one-line debug log and is skipped. No more `core_paths` dict, no more
+hardcoded `_SINGBOX_SCHEMES`, no more silent xray→sing-box fallback. Pick
+`sing-box` to validate hysteria2 / hy2 / tuic / hysteria / anytls in a mixed
+dump.
+
+### Full scheme matrix in sing-box backend
+
+sing-box now emits outbounds for: vmess, vless, trojan, ss, hysteria,
+hysteria2/hy2, tuic, anytls (≥ 1.11), shadowtls (v3), naive (`naive+https://`),
+ssh, wireguard, juicity (lossy: emitted as tuic v5 + bbr+native).
+
+Reality is enforced as a 3-flag invariant
+(`tls.enabled` + `tls.reality.enabled` + `tls.utls.enabled`) — common bug source
+the spec research surfaced. xray-only `xhttp` / `splithttp` transports are
+auto-downgraded to sing-box `httpupgrade` with a one-line warning.
+
+### Xray variant coverage expanded
+
+- ws transport accepts `?ed=2048` and appends it to the path (xray's
+  early-data convention).
+- gRPC: `mode=multi → multiMode=true`, `mode=gun → multiMode=false`. `authority`
+  preserved.
+- xhttp `extra` is JSON-decoded into a sub-object.
+- KCP `seed` + `headerType` propagated.
+- QUIC `quicSecurity` + `key` + `headerType` propagated.
+- Reality `alpn`, `pbk`, `sid`, `spx` mapped to JSON.
+
+### CLI consolidation
+
+`cdnGen`, `cfRecorder`, `dnsChecker`, `ipExtractor`, `v2rayChecker` moved into
+`proxyUtil/cli/`; top-level shim files preserve `python -m
+proxyUtil.v2rayChecker` etc. `pyproject.toml [project.scripts]` rewired to the
+`proxyUtil.cli.<name>:main` form for all 10 entry-points.
+
+### connectMe
+
+Now uses the core registry: `-c xray|v2ray|sing-box|ss`. Auto-downloads
+sing-box on first run when missing.
+
+## 0.3.0 — sing-box backend + new schemes + cleanup
+
+### New protocol coverage
+- New `proxyUtil/singbox.py` module: emits sing-box outbound JSON for
+  `hysteria2://`, `hy2://`, `hysteria://`, `tuic://`, `anytls://`, plus
+  sing-box variants of `ss/vmess/vless/trojan`. Includes parsers
+  `parseHysteria2`, `parseHysteria`, `parseTuic`, `parseAnytls`.
+- `createConfig` now returns `(configName, core_name)` and dispatches
+  hy2/tuic/hy/anytls to sing-box, keeping xray for the existing schemes.
+- `v2rayChecker` resolves both xray and (optional) sing-box on PATH and selects
+  the right binary per-URL; missing sing-box logs an actionable error and skips
+  affected URLs without aborting the batch.
+- Empirical scheme histogram across the 50+ subscription URLs in
+  `mheidari98/.proxy/nodes.md` confirmed real-world hy2/tuic/hysteria samples
+  (used to derive parser fixtures).
+
+### xray transport + security widening
+- Refactored `createVmessConfig` into a transport dispatch table covering
+  `tcp/raw/ws/h2/http/grpc/kcp/quic/httpupgrade/splithttp/xhttp`. New TLS
+  options: `fp`, `alpn`, `echSettings`, REALITY `alpn`, gRPC `multiMode`/`authority`,
+  KCP `seed/headerType`, TCP `headerType=http`. Filter `flow` to only the
+  current `xtls-rprx-vision[-udp443]`.
+- `createTrojanConfig`: added explicit `h2/http` branch, default ws `path=/`,
+  gRPC `serviceName` fallback to `path`, propagate `fp/alpn`, `tlsSettings.fingerprint`.
+- `parseTrojan`: alias `peer→sni`, normalize `allowinsecure` casing/truthiness.
+- `parse_ssr`: tolerate URLs without trailing `/?` query.
+- `parse_ss_withPlugin`: stop double-base64-decoding plain SIP002 userinfo;
+  detect SS-2022 ciphers and emit `uot:true, UoTVersion:2`.
+- Plugin allow-list warning for unknown SIP003 plugins.
+
+### v2rayChecker — perf, safety, cleanliness
+- Replace module-level globals (`CORE`, `time2exec`, `time2kill`, `ignoreWarning`,
+  `CTRL_C`, `tempdir`) with a `CheckerCfg` dataclass + `threading.Event` cancel.
+- Wrap proc lifecycle in `try/finally` so `killer(proc)` always runs.
+- `tempfile.TemporaryDirectory()` ensures cleanup on early exit.
+- Drop the duplicate `as_completed` loop — collect results in one pass.
+
+### Shared CLI plumbing
+- New `_common.add_source_args` / `collect_proxies` / `find_free_ports`. Wired
+  into `v2rayChecker`, `shadowChecker`, and `clashGen`.
+- `shadowChecker`: replace `os.system` shell calls with `subprocess.run` +
+  `os.kill`; reuse `getIPnCountry` instead of inlining the ip-api request.
+- `getIPnCountry`: returns `(ip, country, country_code)`, narrows except
+  list, hoists `IP_API_URL` to module-level constant.
+
+### .gitignore
+- Added `xray/`, `v2ray/`, `sing-box/`, `all`, `sortedProxy.txt`,
+  `sortedShadow.txt`, `clashConfig.yaml`, `*.session`, `geoip*.mmdb`,
+  `geosite*.dat`, `*.mmdb`, `*.dat`.
+
 ## 0.2.0 — modernize
 
 ### Follow-up cleanup (post-initial-modernize commit)

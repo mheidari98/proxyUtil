@@ -3,41 +3,71 @@
 ## Project
 
 `proxyUtil` is a CLI suite for shadowsocks / vmess / vless / trojan / DNS utilities, distributed
-on PyPI. Current version: **0.2.0**. Python: **>=3.10**. License: MIT. Entry point:
+on PyPI. Current version: **0.4.0**. Python: **>=3.10**. License: MIT. Entry point:
 `pyproject.toml` (hatchling backend).
 
 ## Layout
 
 ```
 proxyUtil/
-  __init__.py        Public API: re-exports myUtil, logFormatter, dnsUrl, dnsUtil
-  __version__.py     SOURCE OF TRUTH for version (hatch reads this; bump here only)
-  myUtil.py          Core: ~50 utils — proxy URL parsers, config builders, system glue
-  dnsUrl.py          Static tables: Do53/DoT/DoH endpoint catalogs
-  dnsUtil.py         DNS over UDP/TLS/HTTPS resolvers, IP filter helpers
-  logFormatter.py    Coloured logging.Formatter
-  cdnGen.py          CLI: rewrite vmess/vless/trojan with CDN IPs as address
-  cfRecorder.py      CLI: Cloudflare DNS A-record sync (uses cloudflare>=3 SDK)
-  dnsChecker.py      CLI: probe DNS resolvers, render rich.Table
-  ipExtractor.py     CLI: extract IPs from a list of proxy URLs
-  v2rayChecker.py    CLI: parallel proxy liveness checker, needs xray/v2ray binary
-  network.py         Network-side-effect helpers (ScrapURL, downloadZray) — isolated
-                     so callers know which utilities hit live HTTP at call time
-  _common.py         Internal helper: add_version_arg(parser) for all 10 CLIs
+  __init__.py        Public API surface (only __version__).
+  __version__.py     SOURCE OF TRUTH for version (hatch reads it; bump here only).
+  utils.py           Pure primitives: base64, uuid, json, hashing, finder.
+  schemes.py         Scheme constants + the proxyScheme list.
+  uri.py             URL builders: Create_ss_url[_withPlugin], Create_vmess_url,
+                     processShadowJson.
+  parsers.py         URL parsers for every scheme + tagChanger / tagsChanger /
+                     parseContent / checkPatternsInList / extractIPs.
+  shadowsocks.py     ss-libev cmdline glue: ssURI2sslocal, sslocal2ssURI,
+                     ssConfig2json.
+  net.py             Network-side-effect helpers (ScrapURL, downloadZray,
+                     downloadSingBox, getIPnCountry, is_alive). Anything that
+                     touches live HTTP lives here.
+  os_glue.py         OS / process / proxy-system glue (get_OS, get_arch,
+                     is_tool, is_port_in_use, *RunCore/*KillCore, killProcess,
+                     installDocker, set_proxychains, set_system_proxy).
+  xray.py            xray-core / v2ray-core config templates + builders +
+                     transport dispatch table + writeConfig.
+  singbox.py         sing-box outbound config builder (the unified core; speaks
+                     every scheme proxyUtil parses).
+  cores.py           CoreSpec dataclass + REGISTRY: name → spec. Used by
+                     v2rayChecker / connectMe to pick a core via --core.
+  dnsUrl.py          Static tables: Do53/DoT/DoH endpoint catalogs.
+  dnsUtil.py         DNS over UDP/TLS/HTTPS resolvers, IP filter helpers.
+  logFormatter.py    Coloured logging.Formatter.
   data/
-    Clash-Template.yaml  packaged via importlib.resources
-  cli/                  Newer CLIs migrated from old scripts/ folder
-    clashGen.py         CLI: builds Clash YAML config (needs `subconverter` docker)
-    connectMe.py        CLI: simple ss/v2ray/trojan client launcher
-    shadowChecker.py    CLI: parallel ss-libev liveness checker
-    sslocal2ssURI.py    CLI: ss-local cmdline → ss:// URI
-    ssURI2sslocal.py    CLI: ss:// URI → ss-local cmdline
-tests/                pytest unit + CLI smoke (46 cases)
-.github/workflows/    test.yml (matrix 3.10/3.11/3.12) + python-publish.yml (on tag)
-pyproject.toml        hatchling, [project.scripts]=10 CLIs, ruff, pytest config
-.python-version       3.11 (dev env pin only; floor is 3.10)
-uv.lock               committed; reproducible deps
+    Clash-Template.yaml  packaged via importlib.resources.
+  cli/
+    _common.py        Internal CLI helpers: add_version_arg, add_source_args,
+                      collect_proxies, find_free_ports.
+    cdnGen.py         CLI: rewrite vmess/vless/trojan with CDN IPs as address.
+    cfRecorder.py     CLI: Cloudflare DNS A-record sync (uses cloudflare>=3 SDK).
+    dnsChecker.py     CLI: probe DNS resolvers, render rich.Table.
+    ipExtractor.py    CLI: extract IPs from proxy URLs.
+    v2rayChecker.py   CLI: parallel proxy liveness checker; --core picks the
+                      backend (xray | v2ray | sing-box).
+    clashGen.py       CLI: builds Clash YAML config (needs `subconverter` docker).
+    connectMe.py      CLI: simple ss/v2ray/sing-box client launcher.
+    shadowChecker.py  CLI: parallel ss-libev liveness checker.
+    sslocal2ssURI.py  CLI: ss-local cmdline → ss:// URI.
+    ssURI2sslocal.py  CLI: ss:// URI → ss-local cmdline.
+tests/                pytest unit + CLI smoke (70+ cases).
+.github/workflows/    test.yml + python-publish.yml (on tag).
+pyproject.toml        hatchling, [project.scripts]=10 CLIs (all under cli/).
+.python-version       3.11 (dev env pin only; floor is 3.10).
+uv.lock               committed; reproducible deps.
 ```
+
+## Cores matrix
+
+| core      | binary       | schemes                                                           |
+|-----------|--------------|-------------------------------------------------------------------|
+| xray      | `xray`       | vmess, vless, trojan, ss, ssr (ssr needs `shadowsocksr` SIP003 plugin) |
+| v2ray     | `v2ray`      | same as xray                                                      |
+| sing-box  | `sing-box`   | every scheme above + hysteria/hysteria2/hy2/tuic/anytls/shadowtls/naive/ssh/wireguard/juicity |
+
+`v2rayChecker -c sing-box` is the recommended setting if your subscription
+contains hy2/tuic/hy/anytls URLs. Otherwise `xray` is the default and works.
 
 ## Run / dev commands
 

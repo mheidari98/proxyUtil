@@ -24,7 +24,8 @@ import requests
 
 from proxyUtil._common import add_version_arg
 from proxyUtil.logFormatter import CustomFormatter
-from proxyUtil.myUtil import Create_vmess_url, base64Decode, isBase64
+from proxyUtil.uri import Create_vmess_url
+from proxyUtil.utils import base64Decode, isBase64
 
 ch = logging.StreamHandler()
 ch.setFormatter(CustomFormatter())

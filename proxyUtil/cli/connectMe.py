@@ -2,61 +2,51 @@
 import argparse
 import logging
 import os
+import shlex
 import shutil
 import signal
 import subprocess
 import tempfile
 import time
 
+from proxyUtil import cores
 from proxyUtil._common import add_version_arg
 from proxyUtil.logFormatter import CustomFormatter
-from proxyUtil.myUtil import (
-    createConfig,
+from proxyUtil.os_glue import (
     is_port_in_use,
     is_tool,
     set_proxychains,
     set_system_proxy,
-    ssURI2sslocal,
 )
-from proxyUtil.network import downloadZray
+from proxyUtil.shadowsocks import ssURI2sslocal
+
+
+def _spawn(argv, label):
+    """Spawn `argv`, sleep until KeyboardInterrupt, then SIGTERM the process group."""
+    logging.info(f"Running {' '.join(argv)}")
+    p = None
+    try:
+        p = subprocess.Popen(argv, stdout=subprocess.PIPE, preexec_fn=os.setsid)
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logging.info("KeyboardInterrupt")
+        if p is not None:
+            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+            time.sleep(1)
+    except Exception:
+        logging.error(f"{label} failed to start")
 
 
 def _ss_runner(ss_url, localPort):
-    cmd = ssURI2sslocal(ss_url, localPort)
-    logging.info(f"Running {cmd}")
-    p = None
-    try:
-        p = subprocess.Popen([cmd], stdout=subprocess.PIPE, shell=True, preexec_fn=os.setsid)
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logging.info("KeyboardInterrupt")
-        if p is not None:
-            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-            time.sleep(1)
-    except Exception:
-        logging.error("ss-local failed to start")
+    _spawn(shlex.split(ssURI2sslocal(ss_url, localPort)), "ss-local")
 
 
-def _v2ray_runner(core, url, localPort, tempdir):
-    configName = createConfig(url, localPort, tempdir)
+def _v2ray_runner(spec, binary, url, localPort, tempdir):
+    configName = spec.write_config(url, localPort, tempdir)
     if configName is None:
         return
-
-    cmd = f"{core} run -config {configName}"
-    logging.info(f"Running {cmd}")
-    p = None
-    try:
-        p = subprocess.Popen([cmd], stdout=subprocess.PIPE, shell=True, preexec_fn=os.setsid)
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logging.info("KeyboardInterrupt")
-        if p is not None:
-            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-            time.sleep(1)
-    except Exception:
-        logging.error(f"{core} failed to start")
+    _spawn(spec.run_argv(binary, configName), spec.name)
 
 
 def main(argv=None):
@@ -69,8 +59,8 @@ def main(argv=None):
     parser.add_argument(
         "-c",
         "--core",
-        help="select core from [v2ray, xray, shadowsocks-libev]",
-        choices=["xray", "v2ray", "ss", "wxray"],
+        help="core to launch ('ss' uses ss-local for ss:// links)",
+        choices=(*cores.CORE_NAMES, "ss"),
         default="xray",
     )
     parser.add_argument("--proxychains", help="set proxychains", action="store_true")
@@ -85,13 +75,13 @@ def main(argv=None):
     try:
         if is_port_in_use(args.lport):
             logging.error(f"port {args.lport} is in use")
-            return
+            return None
 
         if args.proxychains:
             if not is_tool("proxychains"):
                 logging.error("proxychains not found, please install it first")
                 logging.error("\tsudo apt install proxychains")
-                return
+                return None
             set_proxychains(args.lport)
 
         logging.info(f"Starting proxy client on port {args.lport} with PID {os.getpid()}")
@@ -103,35 +93,21 @@ def main(argv=None):
             if not is_tool("ss-local"):
                 logging.error("ss-local not found, please install shadowsocks client first")
                 logging.error("\thttps://github.com/shadowsocks/shadowsocks-libev")
-                return
+                return None
             _ss_runner(args.link, args.lport)
         else:
-            os.environ["PATH"] += os.pathsep + os.path.join(".", "xray")
-            os.environ["PATH"] += os.pathsep + os.path.join(".", "v2ray")
-
-            core = shutil.which(args.core)
-            if not core:
-                logging.error(f"{args.core} not found!")
-                if args.core == "v2ray":
-                    logging.error("install v2ray: https://www.v2fly.org/en_US/guide/install.html")
-                else:
-                    logging.error("install xray: https://github.com/XTLS/Xray-core#installation")
-                if input("do you want to download it now? [y/n]").strip() in ["yes", "y"]:
-                    if args.core == "v2ray":
-                        downloadZray("v2fly", "v2ray")
-                    else:
-                        downloadZray("XTLS", "xray")
-                    core = shutil.which(args.core)
-                else:
-                    return 1
-
-            logging.info(f"using {core} core")
-            _v2ray_runner(core, args.link, args.lport, tempdir)
+            spec = cores.get(args.core)
+            binary = cores.resolve(spec)
+            if not binary:
+                return 1
+            logging.info(f"using {spec.name} at {binary}")
+            _v2ray_runner(spec, binary, args.link, args.lport, tempdir)
 
         if args.system:
             set_system_proxy(enable=False)
     finally:
         shutil.rmtree(tempdir, ignore_errors=True)
+    return None
 
 
 if __name__ == "__main__":
