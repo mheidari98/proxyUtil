@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from importlib.resources import files as _resource_files
+from pathlib import Path
 from urllib.parse import urlparse
 
 from .parsers import (
@@ -377,25 +377,28 @@ def createTrojanConfig(loaded, localPort=1080):
 
     stream = config["outbounds"][0]["streamSettings"]
     net = parsed.get("type", "tcp")
-
-    if net == "ws":
-        stream["network"] = "ws"
-        ws_settings = {"path": parsed.get("path", "/")}
-        if "host" in parsed:
-            ws_settings["headers"] = {"Host": parsed["host"]}
-        stream["wsSettings"] = ws_settings
-    elif net == "grpc":
-        stream["network"] = "grpc"
-        service = parsed.get("serviceName") or parsed.get("path", "")
-        stream["grpcSettings"] = {"serviceName": service}
-    elif net in ("h2", "http"):
-        stream["network"] = "http"
-        http_settings = {"path": parsed.get("path", "/")}
-        if "host" in parsed:
-            http_settings["host"] = [parsed["host"]]
-        stream["httpSettings"] = http_settings
-    elif net != "tcp":
-        stream["network"] = net
+    match net:
+        case "ws":
+            stream["network"] = "ws"
+            ws = {"path": parsed.get("path", "/")}
+            if "host" in parsed:
+                ws["headers"] = {"Host": parsed["host"]}
+            stream["wsSettings"] = ws
+        case "grpc":
+            stream["network"] = "grpc"
+            stream["grpcSettings"] = {
+                "serviceName": parsed.get("serviceName") or parsed.get("path", "")
+            }
+        case "h2" | "http":
+            stream["network"] = "http"
+            http = {"path": parsed.get("path", "/")}
+            if "host" in parsed:
+                http["host"] = [parsed["host"]]
+            stream["httpSettings"] = http
+        case "tcp":
+            pass
+        case _:
+            stream["network"] = net
 
     if "security" in parsed:
         stream["security"] = parsed["security"]
@@ -420,23 +423,24 @@ def createConfig(url: str, localPort: int):
     if scheme not in SCHEMES:
         return None
     try:
-        if scheme == "ss":
-            return createShadowConfig(url, port=localPort)
-        if scheme == "ssr":
-            return createSsrConfig(url, localPort=localPort)
-        if scheme == "vmess":
-            if not isBase64(url[8:]):
-                logging.debug("Not Implemented this type of vmess url")
-                return None
-            payload = json.loads(base64Decode(url[8:]))
-            payload["protocol"] = "vmess"
-            return createVmessConfig(payload, port=localPort)
-        if scheme == "vless":
-            return createVmessConfig(parseVless(loaded), port=localPort)
-        if scheme == "trojan":
-            return createTrojanConfig(loaded, localPort=localPort)
+        match scheme:
+            case "ss":
+                return createShadowConfig(url, port=localPort)
+            case "ssr":
+                return createSsrConfig(url, localPort=localPort)
+            case "vmess":
+                if not isBase64(url[8:]):
+                    logging.debug("Not Implemented this type of vmess url")
+                    return None
+                payload = json.loads(base64Decode(url[8:]))
+                payload["protocol"] = "vmess"
+                return createVmessConfig(payload, port=localPort)
+            case "vless":
+                return createVmessConfig(parseVless(loaded), port=localPort)
+            case "trojan":
+                return createTrojanConfig(loaded, localPort=localPort)
     except Exception as err:
-        logging.error(f"{url} : {err}")
+        logging.error(f"skip {url} : {err}")
         return None
     return None
 
@@ -445,8 +449,8 @@ def writeConfig(url: str, localPort: int, path: str) -> str | None:
     cfg = createConfig(url, localPort)
     if cfg is None:
         return None
-    name = os.path.join(path, f"xray_{localPort}.json")
-    with open(name, "w") as f:
+    out = Path(path) / f"xray_{localPort}.json"
+    with out.open("w") as f:
         json.dump(cfg, f)
-    logging.debug(f"xray config {name} created")
-    return name
+    logging.debug(f"xray config {out} created")
+    return str(out)

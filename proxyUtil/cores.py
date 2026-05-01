@@ -28,36 +28,23 @@ class CoreSpec:
     run_argv: Callable[[str, str], list[str]]
 
 
-def _xray_argv(binary, config):
-    return [binary, "run", "-c", config]
-
-
-def _singbox_argv(binary, config):
+def _run_argv(binary, config):
     return [binary, "run", "-c", config]
 
 
 REGISTRY: dict[str, CoreSpec] = {
-    "xray": CoreSpec(
-        name="xray",
-        binary="xray",
-        schemes=xray.SCHEMES,
-        write_config=xray.writeConfig,
-        run_argv=_xray_argv,
-    ),
-    "v2ray": CoreSpec(
-        name="v2ray",
-        binary="v2ray",
-        schemes=xray.SCHEMES,
-        write_config=xray.writeConfig,
-        run_argv=_xray_argv,
-    ),
-    "sing-box": CoreSpec(
-        name="sing-box",
-        binary="sing-box",
-        schemes=singbox.SCHEMES,
-        write_config=singbox.writeConfig,
-        run_argv=_singbox_argv,
-    ),
+    name: CoreSpec(
+        name=name,
+        binary=binary,
+        schemes=schemes,
+        write_config=write_config,
+        run_argv=_run_argv,
+    )
+    for name, binary, schemes, write_config in (
+        ("xray", "xray", xray.SCHEMES, xray.writeConfig),
+        ("v2ray", "v2ray", xray.SCHEMES, xray.writeConfig),
+        ("sing-box", "sing-box", singbox.SCHEMES, singbox.writeConfig),
+    )
 }
 
 CORE_NAMES = tuple(REGISTRY)
@@ -93,10 +80,11 @@ def resolve(spec: CoreSpec, *, prompt_install: bool = True) -> str | None:
 
     from .net import downloadSingBox, downloadZray
 
-    if spec.binary == "v2ray":
-        downloadZray("v2fly", "v2ray")
-    elif spec.binary == "xray":
-        downloadZray("XTLS", "xray")
-    elif spec.binary == "sing-box":
-        downloadSingBox()
+    match spec.binary:
+        case "v2ray":
+            downloadZray("v2fly", "v2ray")
+        case "xray":
+            downloadZray("XTLS", "xray")
+        case "sing-box":
+            downloadSingBox()
     return shutil.which(spec.binary)
