@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import psutil
 
@@ -71,12 +72,13 @@ def killProcess(processName, cmdline=None):
 def get_OS():
     name = platform.system()
     logging.debug(f"OS: {name}")
-    if name == "Linux":
-        return "linux"
-    if name == "Darwin":
-        return "macos"
-    if name == "Windows":
-        return "windows"
+    match name:
+        case "Linux":
+            return "linux"
+        case "Darwin":
+            return "macos"
+        case "Windows":
+            return "windows"
     logging.error("Unsupported OS")
     sys.exit(1)
 
@@ -84,14 +86,15 @@ def get_OS():
 def get_arch():
     arch = platform.machine()
     logging.debug(f"Architecture: {arch}")
-    if arch in ("x86_64", "AMD64"):
-        return "64"
-    if arch in ("i386", "i686"):
-        return "32"
-    if arch == "aarch64":
-        return "arm64-v8a"
-    if arch == "armv7l":
-        return "arm32-v7a"
+    match arch:
+        case "x86_64" | "AMD64":
+            return "64"
+        case "i386" | "i686":
+            return "32"
+        case "aarch64":
+            return "arm64-v8a"
+        case "armv7l":
+            return "arm32-v7a"
     logging.error("Unsupported Architecture")
     sys.exit(1)
 
@@ -99,8 +102,8 @@ def get_arch():
 def chmodX(path):
     if get_OS() == "windows":
         return
-    st = os.stat(path)
-    os.chmod(path, st.st_mode | stat.S_IEXEC)
+    p = Path(path)
+    p.chmod(p.stat().st_mode | stat.S_IEXEC)
 
 
 def clearScreen():
@@ -139,19 +142,19 @@ def killCore(proc):
 
 def augment_local_path():
     """Add ./xray, ./v2ray, ./sing-box dirs to PATH (idempotent)."""
-    for sub in ("xray", "v2ray", "sing-box"):
-        entry = os.path.join(".", sub)
-        if entry not in os.environ.get("PATH", "").split(os.pathsep):
-            os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + entry
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    additions = [f".{os.sep}{sub}" for sub in ("xray", "v2ray", "sing-box")]
+    new_parts = [p for p in additions if p not in parts]
+    if new_parts:
+        os.environ["PATH"] = os.pathsep.join([*parts, *new_parts])
 
 
 def set_proxychains(localPort=1080):
-    pchPath = os.path.expanduser("~/.proxychains/proxychains.conf")
-    os.makedirs(os.path.dirname(pchPath), exist_ok=True)
-    if os.path.exists(pchPath):
-        os.system(f"cp {pchPath} {pchPath}.bak")
-    with open(pchPath, "w") as f:
-        f.write(PROXYCHAINS.format(LOCAL_PORT=localPort))
+    pchPath = Path("~/.proxychains/proxychains.conf").expanduser()
+    pchPath.parent.mkdir(parents=True, exist_ok=True)
+    if pchPath.exists():
+        shutil.copy(pchPath, pchPath.with_suffix(pchPath.suffix + ".bak"))
+    pchPath.write_text(PROXYCHAINS.format(LOCAL_PORT=localPort))
     logging.info("proxychains.conf updated!")
 
 
@@ -160,48 +163,41 @@ def set_system_proxy(proxyHost="127.0.0.1", proxyPort=1080, proxyType="socks5", 
         logging.info("Not Implemented for Windows")
         return
 
-    proxy = f"{proxyType}://{proxyHost}:{proxyPort}"
-    all_proxy = f"export all_proxy={proxy}"
-    no_proxy = "export no_proxy=localhost,127.0.0.0/8,192.168.0.0/16,::1"
-
     SHELL = os.environ.get("SHELL") or ""
     if "zsh" in SHELL:
-        file = "~/.zshrc"
+        rc = Path("~/.zshrc").expanduser()
     elif "bash" in SHELL:
-        file = "~/.bashrc"
+        rc = Path("~/.bashrc").expanduser()
     else:
         logging.error(f"Not supported SHELL: {SHELL}")
         return
 
-    with open(os.path.expanduser(file)) as f:
-        lines = f.readlines()
+    proxy = f"{proxyType}://{proxyHost}:{proxyPort}"
+    all_proxy = f"export all_proxy={proxy}"
+    no_proxy = "export no_proxy=localhost,127.0.0.0/8,192.168.0.0/16,::1"
+
     lines = [
-        line
-        for line in lines
-        if not line.startswith("export all_proxy=") and not line.startswith("export no_proxy=")
+        line for line in rc.read_text().splitlines(keepends=True)
+        if not line.startswith(("export all_proxy=", "export no_proxy="))
     ]
     if enable:
-        lines.append(f"{all_proxy} && {no_proxy}")
-    with open(os.path.expanduser(file), "w") as f:
-        f.writelines(lines)
+        lines.append(f"{all_proxy} && {no_proxy}\n")
+    rc.write_text("".join(lines))
     logging.info("set system proxy done!" if enable else "unset proxy done!")
 
 
 def installDocker():
-    if not is_tool("docker"):
-        try:
-            try:
-                logging.info("Docker Not Found.\nInstalling Docker ...")
-                subprocess.run("curl https://get.docker.com | sh", shell=True, check=True)
-            except subprocess.CalledProcessError:
-                sys.exit("Download Failed !")
-
-            systemctl = subprocess.call(["systemctl", "is-active", "--quiet", "docker"])
-            if systemctl:
-                subprocess.call(["systemctl", "enable", "--now", "--quiet", "docker"])
-            time.sleep(2)
-        except subprocess.CalledProcessError as e:
-            sys.exit(e)
-        except PermissionError:
-            sys.exit("ًroot privileges required")
+    if is_tool("docker"):
+        logging.info("Docker Installed")
+        return
+    try:
+        logging.info("Docker Not Found.\nInstalling Docker ...")
+        subprocess.run("curl https://get.docker.com | sh", shell=True, check=True)
+        if subprocess.call(["systemctl", "is-active", "--quiet", "docker"]):
+            subprocess.call(["systemctl", "enable", "--now", "--quiet", "docker"])
+        time.sleep(2)
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"Download Failed: {e}")
+    except PermissionError:
+        sys.exit("root privileges required")
     logging.info("Docker Installed")

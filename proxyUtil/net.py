@@ -8,11 +8,14 @@ utilities hit the network. Never import from a test that doesn't carry the
 from __future__ import annotations
 
 import logging
-import os
+import shutil
+import socket
 import sys
+import tarfile
 import time
 import urllib.request
 import zipfile
+from pathlib import Path
 
 import requests
 
@@ -37,22 +40,20 @@ IP_API_URL = "http://ip-api.com/json/"
 
 
 def getIP(domain):
-    import socket
-
     try:
         return socket.gethostbyname(domain)
-    except Exception:
-        return False
+    except OSError:
+        return None
 
 
 def is_alive(testDomain, proxy, timeOut=3):
     try:
         start = time.perf_counter()
         requests.head(testDomain, proxies=proxy, timeout=timeOut)
-        end = time.perf_counter()
+        elapsed = time.perf_counter() - start
     except Exception:
         return 0
-    return ((end - start) * 100).__round__()
+    return round(elapsed * 100)
 
 
 def getIPnCountry(proxy, timeOut):
@@ -65,81 +66,78 @@ def getIPnCountry(proxy, timeOut):
 
 def ScrapURL(url, patterns=proxyScheme):
     """Fetch *url* and return proxy strings extracted from the response body."""
-    newProxy: list[str] = []
     try:
         res = requests.get(url, timeout=4)
     except Exception:
         logging.debug("Exception occurred", exc_info=True)
         logging.error(f"Can't reach {url}")
-        return newProxy
+        return []
 
-    if (res.status_code // 100) == 2:
-        content = res.text.strip().replace("﻿", "")
-        newProxy = parseContent(content, patterns)
-        logging.info(f"Got {len(newProxy)} new proxy from {url}")
-    else:
+    if res.status_code // 100 != 2:
         logging.error(f"Can't get {url} , status code = {res.status_code}")
+        return []
+
+    content = res.text.strip().replace("﻿", "")
+    newProxy = parseContent(content, patterns)
+    logging.info(f"Got {len(newProxy)} new proxy from {url}")
     return newProxy
 
 
 def downloadZray(acc: str, repo: str) -> None:
     """Download the latest xray/v2ray release zip from GitHub, verify SHA256, extract."""
-    TAG = requests.get(f"https://api.github.com/repos/{acc}/{repo}-core/releases/latest").json()[
-        "tag_name"
-    ]
-    ZRAY_FILE = f"{repo}-{get_OS()}-{get_arch()}.zip"
-    ZRAY_URL = f"https://github.com/{acc}/{repo}-core/releases/download/{TAG}/{ZRAY_FILE}"
-    DGST_FILE = f"{ZRAY_FILE}.dgst"
-    DGST_URL = f"https://github.com/{acc}/{repo}-core/releases/download/{TAG}/{DGST_FILE}"
-    ZIP_FILE = f"{repo}.zip"
+    tag = requests.get(
+        f"https://api.github.com/repos/{acc}/{repo}-core/releases/latest"
+    ).json()["tag_name"]
+    base = f"https://github.com/{acc}/{repo}-core/releases/download/{tag}"
+    zip_name = f"{repo}-{get_OS()}-{get_arch()}.zip"
+    archive = Path(f"{repo}.zip")
 
-    urllib.request.urlretrieve(ZRAY_URL, ZIP_FILE)
-    logging.info(f"Downloaded {ZRAY_FILE}")
-    r = requests.get(DGST_URL)
-    FILE_SHA256 = (
-        next(line for line in r.content.splitlines() if line.startswith(b"SHA2-256"))
-        .decode()
-        .split()[1]
-    )
-    if getSHA256(ZIP_FILE) != FILE_SHA256:
+    urllib.request.urlretrieve(f"{base}/{zip_name}", archive)
+    logging.info(f"Downloaded {zip_name}")
+
+    dgst = requests.get(f"{base}/{zip_name}.dgst").content.splitlines()
+    expected = next(line for line in dgst if line.startswith(b"SHA2-256")).decode().split()[1]
+    actual = getSHA256(archive)
+    if actual != expected:
         logging.error("SHA256 Check failed")
-        logging.error(f"Expected: {FILE_SHA256}")
-        logging.error(f"Actual: {getSHA256(ZIP_FILE)}")
+        logging.error(f"Expected: {expected}")
+        logging.error(f"Actual: {actual}")
         sys.exit(1)
     logging.info("SHA256 Check passed")
-    with zipfile.ZipFile(ZIP_FILE, "r") as zip_ref:
-        zip_ref.extractall(repo)
-    os.remove(ZIP_FILE)
+
+    with zipfile.ZipFile(archive) as zf:
+        zf.extractall(repo)
+    archive.unlink()
     chmodX(f"{repo}/{repo}")
 
 
 def downloadSingBox() -> None:
     """Download the latest sing-box release tarball, extract into ./sing-box/."""
-    tag = requests.get("https://api.github.com/repos/SagerNet/sing-box/releases/latest").json()[
-        "tag_name"
-    ]
+    tag = requests.get(
+        "https://api.github.com/repos/SagerNet/sing-box/releases/latest"
+    ).json()["tag_name"]
     version = tag.lstrip("v")
     arch_map = {"64": "amd64", "32": "386", "arm64-v8a": "arm64", "arm32-v7a": "armv7"}
     sb_arch = arch_map.get(get_arch(), get_arch())
     name = f"sing-box-{version}-{get_OS()}-{sb_arch}"
-    url = f"https://github.com/SagerNet/sing-box/releases/download/{tag}/{name}.tar.gz"
-    archive = f"{name}.tar.gz"
-    urllib.request.urlretrieve(url, archive)
-    logging.info(f"Downloaded {archive}")
+    archive = Path(f"{name}.tar.gz")
 
-    import tarfile
+    urllib.request.urlretrieve(
+        f"https://github.com/SagerNet/sing-box/releases/download/{tag}/{archive.name}",
+        archive,
+    )
+    logging.info(f"Downloaded {archive.name}")
 
+    tmp = Path("sing-box-tmp")
     with tarfile.open(archive, "r:gz") as tf:
-        tf.extractall("sing-box-tmp")
-    binary_src = os.path.join("sing-box-tmp", name, "sing-box")
-    if get_OS() == "windows":
-        binary_src += ".exe"
-    os.makedirs("sing-box", exist_ok=True)
-    target = os.path.join("sing-box", os.path.basename(binary_src))
-    os.replace(binary_src, target)
-    chmodX(target)
+        tf.extractall(tmp)
 
-    import shutil
+    binary = "sing-box.exe" if get_OS() == "windows" else "sing-box"
+    target_dir = Path("sing-box")
+    target_dir.mkdir(exist_ok=True)
+    target = target_dir / binary
+    (tmp / name / binary).replace(target)
+    chmodX(str(target))
 
-    shutil.rmtree("sing-box-tmp", ignore_errors=True)
-    os.remove(archive)
+    shutil.rmtree(tmp, ignore_errors=True)
+    archive.unlink()
