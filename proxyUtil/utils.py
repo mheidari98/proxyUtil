@@ -6,9 +6,11 @@ import base64
 import contextlib
 import hashlib
 import json
-import os
 import re
 import uuid
+from functools import lru_cache, reduce
+from operator import or_
+from pathlib import Path
 
 __all__ = [
     "base64Decode",
@@ -26,6 +28,9 @@ __all__ = [
     "split_csv",
 ]
 
+_UUID_NS = uuid.UUID("00000000-0000-0000-0000-000000000000")
+_TRUTHY = {"1", "true", "yes"}
+
 
 def split2Npart(a, n):
     k, m = divmod(len(a), n)
@@ -33,10 +38,7 @@ def split2Npart(a, n):
 
 
 def mergeMultiDicts(*dicts):
-    result = {}
-    for d in dicts:
-        result |= d
-    return result
+    return reduce(or_, dicts, {})
 
 
 def is_json(myjson):
@@ -50,12 +52,12 @@ def is_json(myjson):
 def isBase64(sb):
     try:
         if isinstance(sb, str):
-            sb_bytes = bytes(sb, "ascii")
+            sb_bytes = sb.encode("ascii")
         elif isinstance(sb, bytes):
             sb_bytes = sb
         else:
             raise ValueError("Argument must be string or bytes")
-        sb_bytes = sb_bytes + b"=" * (-len(sb_bytes) % 4)
+        sb_bytes += b"=" * (-len(sb_bytes) % 4)
         if b"-" in sb_bytes or b"_" in sb_bytes:
             return base64.urlsafe_b64encode(base64.urlsafe_b64decode(sb_bytes)) == sb_bytes
         return base64.b64encode(base64.b64decode(sb_bytes).decode().encode()) == sb_bytes
@@ -64,9 +66,9 @@ def isBase64(sb):
 
 
 def base64Decode(decodedStr):
-    if "-" in decodedStr or "_" in decodedStr:
-        return base64.urlsafe_b64decode(decodedStr + "===").decode("utf-8")
-    return base64.b64decode(decodedStr + "=" * (-len(decodedStr) % 4)).decode("utf-8")
+    urlsafe = "-" in decodedStr or "_" in decodedStr
+    decoder = base64.urlsafe_b64decode if urlsafe else base64.b64decode
+    return decoder(decodedStr + "=" * (-len(decodedStr) % 4)).decode("utf-8")
 
 
 def is_valid_uuid(val):
@@ -78,33 +80,36 @@ def is_valid_uuid(val):
 
 
 def generate_uuid(basedata):
-    UUID_NAMESPACE = uuid.UUID("00000000-0000-0000-0000-000000000000")
-    return str(uuid.uuid5(UUID_NAMESPACE, basedata))
+    return str(uuid.uuid5(_UUID_NS, basedata))
 
 
 def getSHA256(fileName):
-    with open(fileName, "rb") as f:
-        data = f.read()
-    return hashlib.sha256(data).hexdigest()
+    return hashlib.sha256(Path(fileName).read_bytes()).hexdigest()
+
+
+@lru_cache(maxsize=64)
+def _finder_re(spliter):
+    return re.compile(rf"\s+{re.escape(spliter)}\s+(\S+)")
 
 
 def finder(cmd, spliter):
-    return re.search(rf"\s+{spliter}\s+(\S+)", cmd).group(1)
+    m = _finder_re(spliter).search(cmd)
+    if not m:
+        raise ValueError(f"flag {spliter!r} not found in: {cmd!r}")
+    return m.group(1)
 
 
 def silentremove(filename):
     with contextlib.suppress(OSError):
-        os.remove(filename)
+        Path(filename).unlink()
 
 
 def split_csv(value):
-    if not value:
-        return []
-    return [a for a in value.split(",") if a]
+    return [a for a in value.split(",") if a] if value else []
 
 
 def is_truthy(value):
-    return str(value).lower() in ("1", "true", "yes")
+    return str(value).lower() in _TRUTHY
 
 
 def format_geo(ip, country, country_code):
