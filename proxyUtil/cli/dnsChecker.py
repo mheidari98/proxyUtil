@@ -50,9 +50,7 @@ def main(argv=None):
     parser.add_argument("--do53", help="check DNS over UDP", action="store_true")
     parser.add_argument("--doh", help="check DNS over HTTPS", action="store_true")
     parser.add_argument("--dot", help="check DNS over TLS", action="store_true")
-    parser.add_argument(
-        "--all", help="check all DNS over UDP, DoH and DoT", action="store_true"
-    )
+    parser.add_argument("--all", help="check all DNS over UDP, DoH and DoT", action="store_true")
     args = parser.parse_args(argv)
 
     if args.verbose:

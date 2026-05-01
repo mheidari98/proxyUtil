@@ -22,10 +22,21 @@ __all__ = [
     "wireguard_scheme",
 ]
 
-FRAGMENT_TAGGED = frozenset({
-    "vless", "trojan", "hysteria", "hysteria2", "hy2", "tuic",
-    "anytls", "shadowtls", "ssh", "wireguard", "juicity",
-})
+FRAGMENT_TAGGED = frozenset(
+    {
+        "vless",
+        "trojan",
+        "hysteria",
+        "hysteria2",
+        "hy2",
+        "tuic",
+        "anytls",
+        "shadowtls",
+        "ssh",
+        "wireguard",
+        "juicity",
+    }
+)
 
 ss_scheme = "ss://"
 ssr_scheme = "ssr://"
@@ -44,8 +55,19 @@ wireguard_scheme = "wireguard://"
 juicity_scheme = "juicity://"
 
 proxyScheme = [
-    vmess_scheme, vless_scheme, trojan_scheme, ssr_scheme, ss_scheme,
-    hysteria2_scheme, hy2_scheme, hysteria_scheme, tuic_scheme,
-    anytls_scheme, shadowtls_scheme, naive_scheme, ssh_scheme,
-    wireguard_scheme, juicity_scheme,
+    vmess_scheme,
+    vless_scheme,
+    trojan_scheme,
+    ssr_scheme,
+    ss_scheme,
+    hysteria2_scheme,
+    hy2_scheme,
+    hysteria_scheme,
+    tuic_scheme,
+    anytls_scheme,
+    shadowtls_scheme,
+    naive_scheme,
+    ssh_scheme,
+    wireguard_scheme,
+    juicity_scheme,
 ]

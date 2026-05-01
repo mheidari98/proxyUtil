@@ -26,7 +26,9 @@ def Create_ss_url(server, server_port, method, password):
 def Create_ss_url_withPlugin(
     server, server_port, method, password, plugin="", plugin_opts="", tag=""
 ):
-    extended = f"/?plugin={quote_plus(f'{plugin};{plugin_opts}')}" if (plugin or plugin_opts) else ""
+    extended = (
+        f"/?plugin={quote_plus(f'{plugin};{plugin_opts}')}" if (plugin or plugin_opts) else ""
+    )
     tag = tag or "Woman,Life,Freedom"
     userinfo = _ss_userinfo(method, password, strip_pad=True)
     return f"ss://{userinfo}@{server}:{server_port}{extended}#{tag}"

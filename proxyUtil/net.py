@@ -85,9 +85,9 @@ def ScrapURL(url, patterns=proxyScheme):
 
 def downloadZray(acc: str, repo: str) -> None:
     """Download the latest xray/v2ray release zip from GitHub, verify SHA256, extract."""
-    tag = requests.get(
-        f"https://api.github.com/repos/{acc}/{repo}-core/releases/latest"
-    ).json()["tag_name"]
+    tag = requests.get(f"https://api.github.com/repos/{acc}/{repo}-core/releases/latest").json()[
+        "tag_name"
+    ]
     base = f"https://github.com/{acc}/{repo}-core/releases/download/{tag}"
     zip_name = f"{repo}-{get_OS()}-{get_arch()}.zip"
     archive = Path(f"{repo}.zip")
@@ -113,9 +113,9 @@ def downloadZray(acc: str, repo: str) -> None:
 
 def downloadSingBox() -> None:
     """Download the latest sing-box release tarball, extract into ./sing-box/."""
-    tag = requests.get(
-        "https://api.github.com/repos/SagerNet/sing-box/releases/latest"
-    ).json()["tag_name"]
+    tag = requests.get("https://api.github.com/repos/SagerNet/sing-box/releases/latest").json()[
+        "tag_name"
+    ]
     version = tag.lstrip("v")
     arch_map = {"64": "amd64", "32": "386", "arm64-v8a": "arm64", "arm32-v7a": "armv7"}
     sb_arch = arch_map.get(get_arch(), get_arch())

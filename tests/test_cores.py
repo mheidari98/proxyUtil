@@ -132,7 +132,7 @@ def test_singbox_xhttp_downgrades_to_httpupgrade(caplog):
         "vless://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee@example.com:443"
         "?type=xhttp&security=tls&path=/x&host=cdn.example.com&sni=cdn.example.com"
     )
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("DEBUG"):
         cfg = build_singbox_config(url, 1080)
     assert cfg is not None
     out = cfg["outbounds"][0]

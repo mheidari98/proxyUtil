@@ -177,7 +177,8 @@ def set_system_proxy(proxyHost="127.0.0.1", proxyPort=1080, proxyType="socks5", 
     no_proxy = "export no_proxy=localhost,127.0.0.0/8,192.168.0.0/16,::1"
 
     lines = [
-        line for line in rc.read_text().splitlines(keepends=True)
+        line
+        for line in rc.read_text().splitlines(keepends=True)
         if not line.startswith(("export all_proxy=", "export no_proxy="))
     ]
     if enable:

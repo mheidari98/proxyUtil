@@ -137,7 +137,10 @@ def _transport_block(parsed: dict) -> dict | None:
                 block["early_data_header_name"] = "Sec-WebSocket-Protocol"
             return block
         case "grpc":
-            return {"type": "grpc", "service_name": parsed.get("serviceName") or parsed.get("path", "")}
+            return {
+                "type": "grpc",
+                "service_name": parsed.get("serviceName") or parsed.get("path", ""),
+            }
         case "h2" | "http":
             block = {"type": "http", "path": path}
             if host:
@@ -387,7 +390,7 @@ def build_singbox_config(url, localPort):
             case "vless":
                 outbound = _outbound_vless(loaded)
             case "vmess":
-                payload = url[len("vmess://"):]
+                payload = url[len("vmess://") :]
                 if not isBase64(payload):
                     return None
                 outbound = _outbound_vmess(json.loads(base64Decode(payload)))

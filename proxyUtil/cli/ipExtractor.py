@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Extract IPs from shadowsocks, vmess, vless, trojan links."""
+
 import argparse
 import ipaddress
 import logging
