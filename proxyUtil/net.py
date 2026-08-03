@@ -15,6 +15,8 @@ import tarfile
 import time
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 import requests
@@ -27,9 +29,12 @@ from .utils import getSHA256
 __all__ = [
     "IP_API_URL",
     "PROXIES",
+    "FetchResult",
     "ScrapURL",
+    "ScrapURLs",
     "downloadSingBox",
     "downloadZray",
+    "fetchSource",
     "getIP",
     "getIPnCountry",
     "is_alive",
@@ -37,6 +42,12 @@ __all__ = [
 
 PROXIES = {"http": "socks5h://127.0.0.1:{LOCAL_PORT}", "https": "socks5h://127.0.0.1:{LOCAL_PORT}"}
 IP_API_URL = "http://ip-api.com/json/"
+
+CONNECT_TIMEOUT = 5
+READ_TIMEOUT = 10
+DEADLINE = 30
+MAX_BYTES = 25 * 1024 * 1024
+USER_AGENT = "proxyUtil"
 
 
 def getIP(domain):
@@ -64,23 +75,98 @@ def getIPnCountry(proxy, timeOut):
         return None, None, None
 
 
-def ScrapURL(url, patterns=proxyScheme):
-    """Fetch *url* and return proxy strings extracted from the response body."""
+@dataclass(frozen=True)
+class FetchResult:
+    """Outcome of one source fetch, including why it failed."""
+
+    url: str
+    proxies: tuple[str, ...] = ()
+    elapsed_ms: int = 0
+    http_status: int | None = None
+    bytes_downloaded: int = 0
+    error: str | None = None
+
+    @property
+    def reachable(self) -> bool:
+        return self.error is None and self.http_status is not None
+
+    @property
+    def has_proxies(self) -> bool:
+        return self.reachable and bool(self.proxies)
+
+
+def fetchSource(
+    url,
+    patterns=proxyScheme,
+    *,
+    connect_timeout=CONNECT_TIMEOUT,
+    read_timeout=READ_TIMEOUT,
+    deadline=DEADLINE,
+    max_bytes=MAX_BYTES,
+    user_agent=USER_AGENT,
+) -> FetchResult:
+    """Fetch one subscription URL under a hard byte cap and wall-clock deadline.
+
+    Per-request timeouts do not bound a server that trickles bytes forever, so
+    the body is streamed and both limits are rechecked on every chunk.
+    """
+    started = time.monotonic()
+    downloaded = 0
+    status = None
     try:
-        res = requests.get(url, timeout=4)
-    except Exception:
-        logging.debug("Exception occurred", exc_info=True)
-        logging.error(f"Can't reach {url}")
-        return []
+        with requests.get(
+            url,
+            allow_redirects=True,
+            stream=True,
+            timeout=(connect_timeout, read_timeout),
+            headers={"User-Agent": user_agent},
+        ) as res:
+            status = res.status_code
+            res.raise_for_status()
+            chunks = []
+            for chunk in res.iter_content(chunk_size=64 * 1024):
+                downloaded += len(chunk)
+                if downloaded > max_bytes:
+                    raise RuntimeError(f"body exceeds {max_bytes} bytes")
+                if time.monotonic() - started > deadline:
+                    raise TimeoutError(f"body exceeds {deadline}s deadline")
+                chunks.append(chunk)
+            content = b"".join(chunks).decode(res.encoding or "utf-8", errors="replace")
+            return FetchResult(
+                url=url,
+                proxies=tuple(parseContent(content, patterns)),
+                elapsed_ms=round((time.monotonic() - started) * 1000),
+                http_status=status,
+                bytes_downloaded=downloaded,
+            )
+    except requests.HTTPError:
+        error = f"HTTP {status}"
+    except (requests.RequestException, RuntimeError, TimeoutError) as exc:
+        status, error = None, f"{type(exc).__name__}: {exc}"
+    logging.error(f"Can't get {url} : {error}")
+    return FetchResult(
+        url=url,
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+        http_status=status,
+        bytes_downloaded=downloaded,
+        error=error[:500],
+    )
 
-    if res.status_code // 100 != 2:
-        logging.error(f"Can't get {url} , status code = {res.status_code}")
-        return []
 
-    content = res.text.strip().replace("﻿", "")
-    newProxy = parseContent(content, patterns)
-    logging.info(f"Got {len(newProxy)} new proxy from {url}")
-    return newProxy
+def ScrapURL(url, patterns=proxyScheme, **kwargs):
+    """Fetch *url* and return proxy strings extracted from the response body."""
+    result = fetchSource(url, patterns, **kwargs)
+    logging.info(f"Got {len(result.proxies)} new proxy from {url}")
+    return list(result.proxies)
+
+
+def ScrapURLs(urls, patterns=proxyScheme, *, workers=10, **kwargs) -> list[FetchResult]:
+    """Fetch many sources concurrently. Results keep the order of *urls*."""
+    urls = list(urls)
+    if not urls:
+        return []
+    with ThreadPoolExecutor(max_workers=min(workers, len(urls))) as pool:
+        return list(pool.map(lambda u: fetchSource(u, patterns, **kwargs), urls))
 
 
 def downloadZray(acc: str, repo: str) -> None:
