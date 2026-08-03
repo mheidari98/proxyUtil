@@ -9,7 +9,7 @@ on PyPI. Current version: **0.4.0**. Python: **>=3.10**. License: MIT. Entry poi
 The codebase uses Python 3.10+ features liberally: `match`/`case` for scheme dispatch
 (`singbox.build_singbox_config`, `xray.createConfig`, `os_glue.get_OS`/`get_arch`,
 `cores.resolve`), walrus `:=` in parsers/CLIs, dispatch tables instead of if-chains
-(`parsers._IP_EXTRACTORS`, `parsers._PATTERN_RES`, `xray._TRANSPORT_BUILDERS`,
+(`parsers._IP_EXTRACTORS`, `xray._TRANSPORT_BUILDERS`,
 `clashGen._BEHAVIOR_PREFIX`, `cores.REGISTRY`), pathlib for IO, compiled regexes hoisted
 to module scope.
 
@@ -27,9 +27,9 @@ proxyUtil/
                      parseContent / checkPatternsInList / extractIPs.
   shadowsocks.py     ss-libev cmdline glue: ssURI2sslocal, sslocal2ssURI,
                      ssConfig2json.
-  net.py             Network-side-effect helpers (ScrapURL, downloadZray,
-                     downloadSingBox, getIPnCountry, is_alive). Anything that
-                     touches live HTTP lives here.
+  net.py             Network-side-effect helpers (fetchSource / ScrapURL /
+                     ScrapURLs, downloadZray, downloadSingBox, getIPnCountry,
+                     is_alive). Anything that touches live HTTP lives here.
   os_glue.py         OS / process / proxy-system glue (get_OS, get_arch,
                      is_tool, is_port_in_use, *RunCore/*KillCore, killProcess,
                      installDocker, set_proxychains, set_system_proxy).

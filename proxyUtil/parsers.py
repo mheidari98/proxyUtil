@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urlparse, urlu
 
 from .schemes import FRAGMENT_TAGGED, proxyScheme
 from .uri import Create_ss_url_withPlugin, processShadowJson
-from .utils import base64Decode, is_json, is_truthy, isBase64
+from .utils import base64Decode, is_truthy, isBase64
 
 __all__ = [
     "checkPatternsInList",
@@ -51,8 +51,6 @@ _RE_SS_USERINFO = re.compile(r"^(.+?):(.+)@(.+):(\d+)")
 _RE_USER_HOSTPORT = re.compile(r"^(.+)@(.+):(\d+)$")
 
 _HOSTNAME_ONLY_SCHEMES = FRAGMENT_TAGGED | {"naive", "naive+https"}
-
-_PATTERN_RES = [(p, re.compile(rf"(\S*\s+|^)({re.escape(p)}\S+)")) for p in proxyScheme]
 
 
 def _hostport(loaded):
@@ -258,29 +256,42 @@ def extractIPs(proxy):
 
 
 def checkPatternsInList(lines, patterns=proxyScheme):
-    pattern_res = (
-        _PATTERN_RES
-        if patterns is proxyScheme
-        else [(p, re.compile(rf"(\S*\s+|^)({re.escape(p)}\S+)")) for p in patterns]
-    )
-    result = []
-    for line in lines:
-        for _pattern, regex in pattern_res:
-            if m := regex.search(line):
-                result.append(m.group(2))
-                break
-    return result
+    """Every proxy URL in *lines*, in order. A scheme must start a token, so
+    `href="vmess://..."` in markup is not mistaken for a bare proxy."""
+    prefixes = tuple(patterns)
+    return [token for line in lines for token in line.split() if token.startswith(prefixes)]
 
 
 def parseContent(content, patterns=proxyScheme):
-    if is_json(content):
-        return processShadowJson(content)
-    lines = []
-    for line in content.splitlines():
-        if isBase64(line):
-            line = base64Decode(line)
-        lines.extend(line.split())
-    return checkPatternsInList(lines, patterns)
+    """Extract proxy URLs from a subscription body: a JSON array of shadowsocks
+    servers, plain proxy URLs, or base64 (a blob per line, or one wrapped blob)."""
+    content = content.replace("﻿", "").strip()  # BOMs also show up mid-body
+    if not content:
+        return []
+
+    with contextlib.suppress(KeyError, TypeError, ValueError):
+        if isinstance(json.loads(content), list):
+            return processShadowJson(content)
+
+    lines = content.splitlines()
+    # Scanning prefixes first skips base64 work on every plain line.
+    if found := checkPatternsInList(lines, patterns):
+        return found
+
+    # A body holding one blob per line only decodes line by line; a single blob
+    # wrapped across lines only decodes rejoined. Keep whichever recovered more.
+    decoded = []
+    for line in lines:
+        with contextlib.suppress(ValueError):
+            decoded.extend(base64Decode(line).splitlines())
+    joined = []
+    with contextlib.suppress(ValueError):
+        joined = base64Decode("".join(lines)).splitlines()
+    return max(
+        checkPatternsInList(decoded, patterns),
+        checkPatternsInList(joined, patterns),
+        key=len,
+    )
 
 
 def tagChanger(url, tag="4MahsaAmini"):
@@ -296,7 +307,9 @@ def tagChanger(url, tag="4MahsaAmini"):
         url_parts[4] = urlencode(dict(sorted(query.items())))
         return f"ssr://{base64.urlsafe_b64encode(urlunparse(url_parts)[6:].encode()).decode()}"
 
-    if loaded.scheme == "vmess" and isBase64(url[8:]):
+    if loaded.scheme == "vmess":
+        if not isBase64(url[8:]):
+            raise ValueError(f"vmess payload is not base64: {url[:32]}...")
         jsonLoad = json.loads(base64Decode(url[8:]))
         jsonLoad["ps"] = tag
         return f"vmess://{base64.b64encode(json.dumps(dict(sorted(jsonLoad.items()))).encode()).decode()}"
@@ -304,7 +317,7 @@ def tagChanger(url, tag="4MahsaAmini"):
     if loaded.scheme in FRAGMENT_TAGGED:
         return loaded._replace(fragment=tag).geturl()
 
-    return url
+    return url  # scheme has no tag slot (naive)
 
 
 def tagsChanger(urls, tag="4MahsaAmini", withCnt=False):

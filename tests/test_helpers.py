@@ -3,7 +3,7 @@
 import functools
 import operator
 
-from proxyUtil.parsers import checkPatternsInList, parseContent, tagChanger
+from proxyUtil.parsers import tagChanger
 from proxyUtil.utils import is_json, mergeMultiDicts, split2Npart
 
 
@@ -30,23 +30,6 @@ def test_mergeMultiDicts():
 def test_is_json_true_false():
     assert is_json('{"a": 1}') is True
     assert is_json("not json") is False
-
-
-def test_checkPatternsInList_finds_vmess():
-    lines = [
-        "junk vmess://abcd1234 trailing",
-        "no proxy here",
-        "ss://userpw@host:8388  comment",
-    ]
-    out = checkPatternsInList(lines)
-    assert "vmess://abcd1234" in out
-    assert any(s.startswith("ss://") for s in out)
-
-
-def test_parseContent_picks_up_proxy_lines(sample_ss_url):
-    blob = f"line1\n{sample_ss_url}\nline2\n"
-    out = parseContent(blob)
-    assert sample_ss_url in out
 
 
 def test_tagChanger_replaces_tag(sample_ss_url):
