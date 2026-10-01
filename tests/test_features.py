@@ -469,3 +469,93 @@ def test_renamed_lines_are_single_tokens_and_reparse_for_every_scheme():
         assert proxy_name(rename(live(line, 50, "DE"))) == "🇩🇪 DE 50ms | 🇩🇪 DE 120ms | o"
     assert quote_fragment("Woman,Life,Freedom") == "Woman,Life,Freedom"  # readable ASCII untouched
     assert quote_fragment("a b|c#d%") == "a%20b%7Cc%23d%25"
+
+
+def test_default_rename_has_no_ping_but_custom_template_can_add_it():
+    from proxyUtil.parsers import proxy_name
+    from proxyUtil.results import DEFAULT_RENAME
+
+    assert "{ms}" not in DEFAULT_RENAME
+    url = "vless://11111111-1111-1111-1111-111111111111@h:1?type=ws#orig"
+    assert proxy_name(make_renamer(DEFAULT_RENAME)(live(url, 312, "DE"))) == "🇩🇪 DE | orig"
+    assert proxy_name(make_renamer("{flag} {cc} {ms}ms | {name}")(live(url, 312, "DE"))) == (
+        "🇩🇪 DE 312ms | orig"
+    )
+
+
+def _noisy_spec(http):
+    """Fake core whose config builder logs like the real ones do for a bad config."""
+    import logging
+
+    base = fake_spec(http)
+
+    def write_config(url, port, path, *, listen="127.0.0.1"):
+        logging.error(f"skip {url} : builder complaint")
+        logging.warning("sing-box has no 'xhttp' transport")
+        return base.write_config(url, port, path, listen=listen)
+
+    from dataclasses import replace
+
+    return replace(base, write_config=write_config)
+
+
+class _Records(__import__("logging").Handler):
+    def __init__(self):
+        super().__init__()
+        self.messages = []
+
+    def emit(self, record):
+        self.messages.append(record.getMessage())
+
+
+@pytest.mark.parametrize("verbose", [False, True])
+def test_build_errors_are_hidden_in_normal_mode_and_shown_with_v(
+    tmp_path, http, monkeypatch, capsys, verbose
+):
+    import logging
+
+    spec = _noisy_spec(http)
+    monkeypatch.setattr(vc.cores, "pick_auto", lambda: spec)
+    monkeypatch.setattr(vc.cores, "resolve", lambda s: s.binary)
+    inp, out = tmp_path / "in.txt", tmp_path / "out.txt"
+    inp.write_text("ss://a@h:1#serve\nss://b@h:1#exit\n")
+    root = logging.getLogger()
+    before = root.level
+    records = _Records()
+    root.addHandler(records)
+    try:
+        args = [
+            "-f",
+            str(inp),
+            "-o",
+            str(out),
+            "--no-prefilter",
+            "--no-batch",
+            "-l",
+            "27400",
+            "-d",
+            "http://x.test/generate_204",
+        ]
+        vc.main([*args, "-v"] if verbose else args)
+    finally:
+        root.removeHandler(records)
+    seen = [m for m in records.messages if "builder complaint" in m or "xhttp" in m]
+    assert bool(seen) == verbose
+    # the quieting is scoped to the run, not leaked (-v itself raises the level to INFO)
+    assert root.level == (logging.INFO if verbose else before)
+    err = capsys.readouterr().err
+    assert ("run with -v to see why configs failed" in err) == (
+        not verbose
+    )  # exit-mode config_error
+    assert "1 live" in err
+
+
+def test_errors_before_the_run_still_surface_in_normal_mode(caplog, monkeypatch):
+    # only the checking phase is quiet; e.g. a missing core must still be reported
+    import logging
+
+    monkeypatch.setattr(vc.cores, "pick_auto", lambda: None)
+    monkeypatch.setattr(vc.cores, "resolve", lambda s: None)
+    with caplog.at_level(logging.WARNING):
+        assert vc.main(["--t2kill", "1"]) == 1
+    assert "deprecated" in caplog.text
