@@ -4,14 +4,22 @@ from __future__ import annotations
 
 import base64
 import json
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 
 __all__ = [
     "Create_ss_url",
     "Create_ss_url_withPlugin",
     "Create_vmess_url",
     "processShadowJson",
+    "quote_fragment",
 ]
+
+
+def quote_fragment(tag: str) -> str:
+    """Percent-encode a display name for a URL fragment. Raw spaces, `|`, `%` or `#` make
+    a URL unusable (shell/whitespace splitting, client import); plain ASCII punctuation
+    that is legal in a fragment stays readable."""
+    return quote(tag, safe="/,:@!$&'()*+;=-._~")
 
 
 def _ss_userinfo(method: str, password: str, *, strip_pad: bool = False) -> str:
@@ -31,7 +39,7 @@ def Create_ss_url_withPlugin(
     )
     tag = tag or "Woman,Life,Freedom"
     userinfo = _ss_userinfo(method, password, strip_pad=True)
-    return f"ss://{userinfo}@{server}:{server_port}{extended}#{tag}"
+    return f"ss://{userinfo}@{server}:{server_port}{extended}#{quote_fragment(tag)}"
 
 
 def Create_vmess_url(jsonLoad):

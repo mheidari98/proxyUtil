@@ -143,6 +143,8 @@ def test_signal_keeps_partial_results_and_leaves_no_orphans(tmp_path, sig, extra
             "-c",
             "xray",
             "--no-prefilter",
+            "-d",
+            "http://x.test/generate_204",
             *extra,
         ],
         env={**os.environ, "TARGET_PORT": str(port)},
@@ -169,3 +171,18 @@ def test_signal_keeps_partial_results_and_leaves_no_orphans(tmp_path, sig, extra
     assert proc.returncode == 130, err
     time.sleep(0.2)
     assert not [c for c in children if c.is_running() and c.status() != psutil.STATUS_ZOMBIE]
+
+
+def test_default_probe_is_https_so_http_only_proxies_are_not_live(tmp_path, http):
+    # Regression: in the free list 35 of 60 proxies answered plain-HTTP generate_204 but
+    # black-holed TLS, so they were "live" yet useless. The fake target below speaks only
+    # plain HTTP, like such a proxy: an https probe must call it dead.
+    from tests.helpers import fake_spec
+
+    assert vc.DEFAULT_PROBE_URL.startswith("https://")
+    assert vc.build_parser().parse_args([]).domain == vc.DEFAULT_PROBE_URL
+    spec = fake_spec(http)
+    https = _cfg(spec, tmp_path, timeout=2)
+    https.test_url = vc.DEFAULT_PROBE_URL
+    assert vc.check_one("ss://a@h:1#serve", 22050, https).status == "dead"
+    assert vc.check_one("ss://a@h:1#serve", 22051, _cfg(spec, tmp_path)).status == "live"

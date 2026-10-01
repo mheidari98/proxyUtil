@@ -22,6 +22,10 @@ scales with concurrency (one core process serves a whole batch of proxies).
   proxy if ip-api failed (20% of live xray configs in the May bench). Geo is now opt-in via
   `--geo` (implied by `--rename`, `--country`, `--sort country`), and a failed lookup only
   means "no country". `-i/--ignore` (which worked backwards) is a deprecated no-op that warns.
+- **Default probe target is HTTPS** (`https://www.gstatic.com/generate_204`, was plain HTTP).
+  On the free list 35 of 60 "live" proxies answered plain HTTP but black-holed TLS, so they
+  were useless for real traffic. Latency now includes the TLS handshake. Use
+  `-d http://www.gstatic.com/generate_204` for the old behaviour.
 - **Stricter probe.** `generate_204` endpoints must answer exactly 204; any other `-d` target
   must answer 2xx/3xx. Block pages and captive portals no longer count as live; expect lower
   (more honest) counts. Latency is real milliseconds (was 10 ms units).
@@ -53,6 +57,11 @@ scales with concurrency (one core process serves a whole batch of proxies).
 - Free-port search binds instead of connecting, so bound-but-idle ports are skipped. Raises the
   open-file limit when it can (pre-filter uses up to 2000 sockets).
 - Probe errors now name the root cause (`NewConnectionError: ... Connection refused`).
+
+- **Renamed proxies were not valid URLs.** Names are now percent-encoded in the fragment
+  (`uri.quote_fragment`, also used by `tagChanger` and the ss builder). Raw spaces and `|`
+  split the line when re-read and broke client imports. Re-running `--rename` on an already
+  renamed list nests the old name inside the new one.
 
 ### Features
 - **TCP pre-filter** (`proxyUtil.prefilter`): servers that never answer a TCP connect are
