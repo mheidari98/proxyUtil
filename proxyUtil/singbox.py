@@ -36,11 +36,20 @@ from .parsers import (
     parseVless,
     parseWireguard,
 )
-from .utils import base64Decode, generate_uuid, is_truthy, is_valid_uuid, isBase64, split_csv
+from .utils import (
+    base64Decode,
+    generate_uuid,
+    is_truthy,
+    is_valid_uuid,
+    isBase64,
+    normalize_network,
+    split_csv,
+)
 
 __all__ = [
     "MIN_SINGBOX_VERSION_ANYTLS",
     "SCHEMES",
+    "build_singbox_batch",
     "build_singbox_config",
     "writeConfig",
 ]
@@ -118,7 +127,7 @@ def _reality_block(parsed: dict) -> dict:
 
 def _transport_block(parsed: dict) -> dict | None:
     """Build sing-box `transport` from xray-style URL keys. None for tcp/none."""
-    net = parsed.get("net") or parsed.get("type") or ""
+    net = normalize_network(parsed.get("net") or parsed.get("type"))
     host = parsed.get("host")
     path = parsed.get("path", "/")
 
@@ -354,7 +363,7 @@ def _outbound_vless(loaded):
     return out
 
 
-def build_singbox_config(url, localPort):
+def build_singbox_config(url, localPort, *, listen="127.0.0.1"):
     loaded = urlsplit(url)
     scheme = loaded.scheme
     if scheme not in SCHEMES:
@@ -401,16 +410,37 @@ def build_singbox_config(url, localPort):
         return None
 
     config = json.loads(_SINGBOX_BASE_TPL)
+    config["inbounds"][0]["listen"] = listen
     config["inbounds"][0]["listen_port"] = localPort
     config["outbounds"].append(outbound)
     return config
 
 
-def writeConfig(url, localPort, path):
-    config = build_singbox_config(url, localPort)
+def writeConfig(url, localPort, path, *, listen="127.0.0.1"):
+    config = build_singbox_config(url, localPort, listen=listen)
     if config is None:
         return None
     out = Path(path) / f"singbox_{localPort}.json"
     with out.open("w") as f:
         json.dump(config, f)
     return str(out)
+
+
+def build_singbox_batch(items, *, listen="127.0.0.1"):
+    """One sing-box config serving many `(url, port)` pairs; see ``xray.createBatchConfig``."""
+    config = json.loads(_SINGBOX_BASE_TPL)
+    config["inbounds"], config["outbounds"] = [], []
+    rules, built = [], []
+    for index, (url, port) in enumerate(items):
+        single = build_singbox_config(url, port, listen=listen)
+        if single is None:
+            continue
+        n = len(built)
+        inbound, outbound = single["inbounds"][0], single["outbounds"][0]
+        inbound["tag"], outbound["tag"] = f"in{n}", f"out{n}"
+        config["inbounds"].append(inbound)
+        config["outbounds"].append(outbound)
+        rules.append({"inbound": [f"in{n}"], "action": "route", "outbound": f"out{n}"})
+        built.append(index)
+    config["route"] = {"rules": rules}
+    return config, built

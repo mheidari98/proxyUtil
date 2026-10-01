@@ -24,12 +24,14 @@ from .utils import (
     is_valid_uuid,
     isBase64,
     mergeMultiDicts,
+    normalize_network,
     split_csv,
 )
 
 __all__ = [
     "CLASH_SAMPLE_PATH",
     "SCHEMES",
+    "createBatchConfig",
     "createConfig",
     "createShadowConfig",
     "createSsrConfig",
@@ -116,7 +118,7 @@ vmessOut = {
                 ]
             },
             "streamSettings": {
-                "tlsSettings": {"disableSystemRoot": False, "allowInsecure": True},
+                "tlsSettings": {"disableSystemRoot": False},
                 "xtlsSettings": {"disableSystemRoot": False},
             },
             "mux": {"enabled": False, "concurrency": -1},
@@ -134,7 +136,7 @@ trojanOut = {
             "streamSettings": {
                 "network": "tcp",
                 "security": "tls",
-                "tlsSettings": {"allowInsecure": True, "serverName": ""},
+                "tlsSettings": {"serverName": ""},
             },
         }
     ]
@@ -347,15 +349,16 @@ def createVmessConfig(jsonLoad, port=1080):
     if sec != "auto":
         user["security"] = sec
 
-    builder = _TRANSPORT_BUILDERS.get(jsonLoad["net"])
+    net = normalize_network(jsonLoad.get("net"))
+    builder = _TRANSPORT_BUILDERS.get(net)
     if builder is None:
-        logging.warning(f"unsupported transport: {jsonLoad['net']!r}")
+        logging.warning(f"unsupported transport: {net!r}")
     else:
         outbound["streamSettings"].update(builder(jsonLoad))
 
-    if jsonLoad["tls"]:
-        outbound["streamSettings"]["security"] = jsonLoad["tls"]
-        if jsonLoad["tls"] == "reality":
+    if tls := jsonLoad.get("tls"):
+        outbound["streamSettings"]["security"] = tls
+        if tls == "reality":
             _apply_reality_settings(outbound["streamSettings"], jsonLoad)
         else:
             _apply_tls_settings(outbound["streamSettings"], jsonLoad)
@@ -376,7 +379,7 @@ def createTrojanConfig(loaded, localPort=1080):
     server_cfg["password"] = parsed["password"]
 
     stream = config["outbounds"][0]["streamSettings"]
-    net = parsed.get("type", "tcp")
+    net = normalize_network(parsed.get("type"))
     match net:
         case "ws":
             stream["network"] = "ws"
@@ -416,8 +419,21 @@ def createTrojanConfig(loaded, localPort=1080):
     return config
 
 
-def createConfig(url: str, localPort: int):
-    """Build an xray outbound config dict for *url*. Returns None if unsupported."""
+def createConfig(url: str, localPort: int, *, listen: str = "0.0.0.0"):
+    """Build an xray config dict for *url*. Returns None if unsupported.
+
+    *listen* is the SOCKS inbound's bind address. The default keeps the historic
+    all-interfaces bind for client use; throwaway checkers should pass ``127.0.0.1``.
+    """
+    config = _create_config(url, localPort)
+    if config is not None:
+        inbound = config["inbounds"][0]
+        inbound["listen"] = listen
+        inbound["settings"]["ip"] = listen
+    return config
+
+
+def _create_config(url: str, localPort: int):
     loaded = urlparse(url)
     scheme = loaded.scheme
     if scheme not in SCHEMES:
@@ -445,8 +461,8 @@ def createConfig(url: str, localPort: int):
     return None
 
 
-def writeConfig(url: str, localPort: int, path: str) -> str | None:
-    cfg = createConfig(url, localPort)
+def writeConfig(url: str, localPort: int, path: str, *, listen: str = "0.0.0.0") -> str | None:
+    cfg = createConfig(url, localPort, listen=listen)
     if cfg is None:
         return None
     out = Path(path) / f"xray_{localPort}.json"
@@ -454,3 +470,31 @@ def writeConfig(url: str, localPort: int, path: str) -> str | None:
         json.dump(cfg, f)
     logging.debug(f"xray config {out} created")
     return str(out)
+
+
+def createBatchConfig(items, *, listen: str = "127.0.0.1"):
+    """One xray config serving many `(url, port)` pairs: a SOCKS inbound per pair routed
+    to its own outbound. Returns `(config, built)` where *built* lists the indices of
+    *items* that produced an outbound (the rest are unsupported or malformed)."""
+    config: dict = {
+        "log": {"loglevel": "none"},
+        "dns": dnsServers["dns"],
+        "inbounds": [],
+        "outbounds": [],
+        "routing": {"rules": []},
+    }
+    built = []
+    for index, (url, port) in enumerate(items):
+        single = createConfig(url, port, listen=listen)
+        if single is None:
+            continue
+        n = len(built)
+        inbound, outbound = single["inbounds"][0], single["outbounds"][0]
+        inbound["tag"], outbound["tag"] = f"in{n}", f"out{n}"
+        config["inbounds"].append(inbound)
+        config["outbounds"].append(outbound)
+        config["routing"]["rules"].append(
+            {"type": "field", "inboundTag": [f"in{n}"], "outboundTag": f"out{n}"}
+        )
+        built.append(index)
+    return config, built

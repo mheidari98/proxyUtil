@@ -118,4 +118,5 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = [
     "network: tests that require live network access",
+    "core: end-to-end tests that need real xray/v2ray/sing-box binaries (skipped if absent)",
 ]

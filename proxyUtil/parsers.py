@@ -15,6 +15,7 @@ from .utils import base64Decode, is_truthy, isBase64
 
 __all__ = [
     "checkPatternsInList",
+    "dedupe_proxies",
     "extractIPs",
     "parseAnytls",
     "parseContent",
@@ -32,6 +33,8 @@ __all__ = [
     "parse_ss_withPlugin",
     "parse_ssr",
     "parse_userinfo",
+    "proxy_identity",
+    "proxy_name",
     "tagChanger",
     "tagsChanger",
 ]
@@ -328,3 +331,37 @@ def tagsChanger(urls, tag="4MahsaAmini", withCnt=False):
         except Exception as e:
             logging.debug("tagsChanger: failed for url=%r: %s", url, e)
     return lines
+
+
+def proxy_identity(url):
+    """Key that ignores the display name: the URL fragment, or a vmess payload's ``ps``."""
+    if url.startswith("vmess://"):
+        with contextlib.suppress(ValueError, TypeError, AttributeError):
+            payload = json.loads(base64Decode(url[8:].split("#", 1)[0]))
+            payload.pop("ps", None)
+            return "vmess:" + json.dumps(payload, sort_keys=True)
+    return url.split("#", 1)[0]
+
+
+def dedupe_proxies(urls):
+    """Drop proxies that differ only by name, keeping the first of each, in order."""
+    seen: dict[str, str] = {}
+    for url in urls:
+        seen.setdefault(proxy_identity(url), url)
+    return list(seen.values())
+
+
+def proxy_name(url):
+    """The display name stored in a proxy URL (fragment, or vmess ``ps``); "" if none."""
+    try:
+        match urlparse(url).scheme:
+            case "vmess":
+                return str(json.loads(base64Decode(url[8:].split("#", 1)[0])).get("ps", ""))
+            case "ss":
+                return parse_ss_withPlugin(url)[6] or ""
+            case "ssr":
+                return parse_ssr(url)["remarks"]
+            case _:
+                return unquote(urlparse(url).fragment)
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+        return ""

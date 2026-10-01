@@ -149,3 +149,107 @@ def test_xray_unknown_scheme_returns_none():
     from proxyUtil.xray import createConfig
 
     assert createConfig("hysteria2://pw@host:443", 1080) is None
+
+
+def _ss(method):
+    import base64
+
+    raw = base64.urlsafe_b64encode(f"{method}:pw".encode()).decode().rstrip("=")
+    return f"ss://{raw}@203.0.113.1:8388"
+
+
+def test_xray_family_rejects_legacy_ciphers_but_singbox_accepts():
+    for name in ("xray", "v2ray"):
+        reason = cores.get(name).unsupported_reason(_ss("aes-256-cfb"))
+        assert reason and "aes-256-cfb" in reason and "sing-box" in reason
+        assert cores.get(name).unsupported_reason(_ss("aes-256-gcm")) is None
+    assert cores.get("sing-box").unsupported_reason(_ss("aes-256-cfb")) is None
+
+
+def test_cipher_support_differs_between_xray_and_v2ray():
+    # measured against the real binaries: v2ray 5.x has no xchacha20 / ss-2022
+    assert cores.get("xray").unsupported_reason(_ss("xchacha20-ietf-poly1305")) is None
+    assert cores.get("v2ray").unsupported_reason(_ss("xchacha20-ietf-poly1305")) is not None
+    assert cores.get("xray").unsupported_reason(_ss("2022-blake3-aes-256-gcm")) is None
+    assert cores.get("v2ray").unsupported_reason(_ss("2022-blake3-aes-256-gcm")) is not None
+
+
+def test_non_ss_urls_pass_cipher_check():
+    assert cores.get("xray").unsupported_reason("vless://id@h:443") is None
+    assert cores.get("xray").unsupported_reason("ss://garbage") is None
+
+
+def test_pick_auto_prefers_singbox_then_xray_then_v2ray(monkeypatch):
+    present = {"sing-box", "xray", "v2ray"}
+    monkeypatch.setattr(cores.shutil, "which", lambda b: b if b in present else None)
+    assert cores.pick_auto().name == "sing-box"
+    present.discard("sing-box")
+    assert cores.pick_auto().name == "xray"
+    present.discard("xray")
+    assert cores.pick_auto().name == "v2ray"
+    present.clear()
+    assert cores.pick_auto() is None
+
+
+def test_every_core_has_batch_builder_and_check_argv():
+    for spec in cores.REGISTRY.values():
+        assert spec.build_batch and spec.check_argv
+
+
+def test_batch_config_shape_unique_tags_and_routing():
+    from proxyUtil import singbox, xray
+
+    urls = [
+        ("ss://YWVzLTEyOC1nY206cGFzc3dk@203.0.113.1:8388", 41001),
+        ("hysteria2://pw@x:1", 41002),  # xray can't build it: skipped, not fatal
+        ("trojan://pw@203.0.113.2:443?security=tls", 41003),
+    ]
+    cfg, built = xray.createBatchConfig(urls)
+    assert built == [0, 2]
+    assert [i["port"] for i in cfg["inbounds"]] == [41001, 41003]
+    assert all(i["listen"] == "127.0.0.1" for i in cfg["inbounds"])
+    assert [r["outboundTag"] for r in cfg["routing"]["rules"]] == ["out0", "out1"]
+    assert {o["tag"] for o in cfg["outbounds"]} == {"out0", "out1"}
+
+    cfg, built = singbox.build_singbox_batch(urls)
+    assert built == [0, 1, 2]
+    assert [i["listen_port"] for i in cfg["inbounds"]] == [41001, 41002, 41003]
+    assert len({o["tag"] for o in cfg["outbounds"]}) == 3
+    assert cfg["route"]["rules"][1] == {"inbound": ["in1"], "action": "route", "outbound": "out1"}
+
+
+def test_xray_templates_do_not_force_allow_insecure():
+    # xray >= 2026-06-01 rejects any config containing allowInsecure, so a template that
+    # forces it makes every TLS config fail. Only an explicit request may emit it.
+    from proxyUtil import xray
+
+    for url in (
+        "trojan://pw@203.0.113.2:443?security=tls&sni=a.example",
+        "vless://11111111-1111-1111-1111-111111111111@203.0.113.3:443?security=tls&type=ws",
+    ):
+        stream = xray.createConfig(url, 1080)["outbounds"][0]["streamSettings"]
+        assert "allowInsecure" not in stream.get("tlsSettings", {})
+    asked = xray.createConfig("trojan://pw@203.0.113.2:443?security=tls&allowInsecure=1", 1080)[
+        "outbounds"
+    ][0]["streamSettings"]
+    assert asked["tlsSettings"]["allowInsecure"] is True
+
+
+def test_xray_flags_cert_skipping_configs_after_removal_date(monkeypatch):
+    import datetime
+
+    insecure = "trojan://pw@h:443?security=tls&allowInsecure=1"
+    strict = "trojan://pw@h:443?security=tls"
+    spec = cores.get("xray")
+    assert "allowInsecure" in spec.unsupported_reason(insecure)  # today is past 2026-06-01
+    assert spec.unsupported_reason(strict) is None
+    assert cores.get("sing-box").unsupported_reason(insecure) is None
+    assert cores.get("v2ray").unsupported_reason(insecure) is None
+
+    class Before(datetime.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 5, 31)
+
+    monkeypatch.setattr(cores.datetime, "date", Before)
+    assert spec.unsupported_reason(insecure) is None
