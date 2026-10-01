@@ -143,3 +143,9 @@ geoip*.mmdb
 geosite*.dat
 *.mmdb
 *.dat
+
+# bench harness output (scripts/bench_checker.py)
+bench/log_*.txt
+bench/sorted_*.txt
+bench/result_*.json
+bench/summary.json

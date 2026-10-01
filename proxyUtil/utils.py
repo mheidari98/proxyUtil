@@ -23,6 +23,7 @@ __all__ = [
     "is_truthy",
     "is_valid_uuid",
     "mergeMultiDicts",
+    "normalize_network",
     "silentremove",
     "split2Npart",
     "split_csv",
@@ -30,6 +31,7 @@ __all__ = [
 
 _UUID_NS = uuid.UUID("00000000-0000-0000-0000-000000000000")
 _TRUTHY = {"1", "true", "yes"}
+_NETWORK_RE = re.compile(r"[a-z0-9]+")
 
 
 def split2Npart(a, n):
@@ -115,3 +117,10 @@ def is_truthy(value):
 def format_geo(ip, country, country_code):
     label = f"{country_code} ({country})" if country_code else country
     return f"ip={ip} @ {label}"
+
+
+def normalize_network(value, default="tcp"):
+    """Transport name from a URL field. Subscriptions carry junk like ``ws🌐`` or
+    ``tcp@channel``; keep the leading word, and fall back to *default* for empty/garbage."""
+    m = _NETWORK_RE.match(str(value or "").strip().lower())
+    return m.group() if m else default
