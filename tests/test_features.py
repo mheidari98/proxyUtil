@@ -559,3 +559,64 @@ def test_errors_before_the_run_still_surface_in_normal_mode(caplog, monkeypatch)
     with caplog.at_level(logging.WARNING):
         assert vc.main(["--t2kill", "1"]) == 1
     assert "deprecated" in caplog.text
+
+
+def test_failure_caption_summarises_reasons():
+    cap = vc._failure_caption(
+        [
+            "speed.cloudflare.com: HTTP 429; proof.ovh.net: HTTP 429",
+            "x: timeout",
+            "core did not start",
+            "boom",
+        ],
+        5,
+    )
+    assert cap.startswith("download failed for 4/5:")
+    assert "HTTP 429 (rate limited) x1" in cap and "timeout x1" in cap
+    assert "core did not start x1" in cap and "failed x1" in cap
+
+
+def test_speedtest_table_explains_failures_and_records_reasons(tmp_path, monkeypatch, capsys):
+    from http.server import ThreadingHTTPServer
+
+    from tests.test_geo_speed import Handler
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    spec = fake_spec(server.server_address[1])
+    monkeypatch.setattr(vc.cores, "pick_auto", lambda: spec)
+    monkeypatch.setattr(vc.cores, "resolve", lambda s: s.binary)
+    inp, out = tmp_path / "in.txt", tmp_path / "out.txt"
+    inp.write_text("ss://u0@h:1#serve\nss://u1@h:1#serve\n")
+    # a custom base whose /__down is rate limited: every download fails with a 429
+    monkeypatch.setattr(vc, "download_urls", lambda base, n: [f"{base}/limited"])
+    try:
+        vc.main(
+            [
+                "-f",
+                str(inp),
+                "-o",
+                str(out),
+                "--no-prefilter",
+                "-l",
+                "27500",
+                "-d",
+                "http://x.test/generate_204",
+                "--speedtest",
+                "2",
+                "--speedtest-url",
+                "http://speed.test",
+                "--format",
+                "json",
+            ]
+        )
+    finally:
+        server.shutdown()
+    shown = capsys.readouterr().out
+    assert "fail" in shown and "HTTP 429 (rate limited) x2" in shown
+    rows = json.loads((tmp_path / "out.json").read_text())
+    assert all(r["down_mbps"] is None and "HTTP 429" in r["down_error"] for r in rows)
+
+
+def test_caption_covers_upload_failures():
+    assert vc._failure_caption(["timeout"], 3, "upload") == "upload failed for 1/3: timeout x1"
