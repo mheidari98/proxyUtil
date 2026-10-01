@@ -83,8 +83,8 @@ scales with concurrency (one core process serves a whole batch of proxies).
   removed after a completed run).
 - **Country and naming:** exit country is resolved *through the proxy* (Cloudflare
   `cdn-cgi/trace`, ip-api fallback), so CDN-fronted configs get the real exit country.
-  `--country DE,NL` filters, `--rename [TEMPLATE]` rewrites names (default
-  `🇩🇪 DE 312ms | original`), `--sort latency|country|scheme|speed`. Opt-in; default output is
+  `--country DE,NL` filters, `--rename [TEMPLATE]` rewrites names (default `🇩🇪 DE | original`; add latency
+  with a custom template such as `'{flag} {cc} {ms}ms | {name}'`), `--sort latency|country|scheme|speed`. Opt-in; default output is
   byte-identical to the input URLs.
 - `--format txt|json|b64|singbox` (repeatable): full result data, a base64 subscription, or a
   ready-to-import sing-box client config with a `urltest` group.
@@ -94,7 +94,9 @@ scales with concurrency (one core process serves a whole batch of proxies).
   real downloads of the top N one at a time and shows a table; `--speedtest-time`,
   `--speedtest-mb`, `--speedtest-upload`, `--speedtest-url`.
 - Sources: `--sources FILE`, concurrent fetch, failed sources are logged with the reason.
-- Progress bar (TTY) and an end-of-run summary by status and by scheme.
+- Progress bar (TTY) and an end-of-run summary by status and by scheme. Per-config build
+  errors and transport warnings are hidden in a normal run (they scribble over the bar and
+  the summary already counts them); `-v` shows them.
 - New modules: `runner`, `probe`, `results`, `prefilter`, `batch`, `geo`, `speedtest`.
   `scripts/bench_checker.py` replaces the ad-hoc bench script.
 

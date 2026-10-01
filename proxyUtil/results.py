@@ -35,7 +35,7 @@ __all__ = [
 LIVE = "live"
 SORTS = ("latency", "country", "scheme", "speed")
 FORMATS = ("txt", "json", "b64", "singbox")
-DEFAULT_RENAME = "{flag} {cc} {ms}ms | {name}"
+DEFAULT_RENAME = "{flag} {cc} | {name}"  # latency is opt-in: add {ms} yourself
 
 
 @dataclass(frozen=True)

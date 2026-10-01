@@ -3,6 +3,7 @@
 # Install v2ray:   https://www.v2fly.org/en_US/guide/install.html
 # Install sing-box: https://sing-box.sagernet.org/installation/
 import argparse
+import contextlib
 import logging
 import queue
 import random
@@ -255,6 +256,9 @@ class _Reporter:
         return self
 
     def __exit__(self, *exc):
+        self.stop_bar()
+
+    def stop_bar(self) -> None:
         if self.progress:
             self.progress.stop()
 
@@ -552,6 +556,20 @@ def run_check(
     return stopped
 
 
+@contextlib.contextmanager
+def _quiet_logging(enabled: bool):
+    """Keep per-config build errors and transport warnings out of a normal run: they
+    scribble over the progress bar and the summary already counts them. `-v` shows them."""
+    root = logging.getLogger()
+    previous = root.level
+    if enabled:
+        root.setLevel(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        root.setLevel(previous)
+
+
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -638,8 +656,9 @@ def main(argv=None):
     show_bar = sys.stderr.isatty() and not (args.verbose or args.debug)
     stopped = "done"
     reporter = _Reporter(len(lines), show_bar)
+    quiet = not (args.verbose or args.debug)
     try:
-        with tempfile.TemporaryDirectory() as tempdir, reporter:
+        with tempfile.TemporaryDirectory() as tempdir, reporter, _quiet_logging(quiet):
             cfg = CheckerCfg(
                 core=spec,
                 binary=binary,
@@ -671,7 +690,17 @@ def main(argv=None):
                 if stopped == "max_live":
                     cancel.clear()  # that event only stopped the workers, which are gone
                 if args.speedtest and stopped in ("done", "max_live") and sink.count:
-                    _speedtest(sink, cfg, args)
+                    reporter.stop_bar()  # the table must not be printed over a live bar
+                    with (
+                        Console(stderr=True).status(
+                            f"measuring speed of the top {args.speedtest}...", spinner="dots"
+                        )
+                        if show_bar
+                        else contextlib.nullcontext()
+                    ):
+                        table = _speedtest(sink, cfg, args)
+                    if table is not None:
+                        Console(stderr=args.output == "-").print(table)
             except KeyboardInterrupt:
                 stopped = "interrupted"
     finally:
@@ -684,7 +713,10 @@ def main(argv=None):
         if previous is not None:
             signal.signal(signal.SIGTERM, previous)
 
-    Console(stderr=True).print(reporter.summary(stopped), markup=False, highlight=False)
+    summary = reporter.summary(stopped)
+    if quiet and (reporter.counts["config_error"] or reporter.counts["error"]):
+        summary += "\nrun with -v to see why configs failed"
+    Console(stderr=True).print(summary, markup=False, highlight=False)
     return 130 if stopped == "interrupted" else None
 
 
@@ -753,9 +785,10 @@ def _with_core(url: str, cfg: CheckerCfg, port: int, fn):
         return None
 
 
-def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> None:
+def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> Table | None:
     """Re-rank the best proxies by a steadier latency, then time real downloads on the
-    top N one at a time (parallel tests would share, and so skew, your uplink)."""
+    top N one at a time (parallel tests would share, and so skew, your uplink). Returns the
+    results table for the caller to print, or None if cancelled."""
     n = max(1, args.speedtest)
     (port,) = find_free_ports(args.lport, 1)
     pool = sorted(sink.all(), key=lambda r: r.latency_ms)[: n * 2]
@@ -764,7 +797,7 @@ def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> None:
     measured = []
     for result in pool:
         if cfg.cancel.is_set():
-            return
+            return None
         stats = _with_core(
             result.url,
             cfg,
@@ -777,19 +810,20 @@ def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> None:
             )
     measured.sort(key=lambda r: r.latency_ms)
 
-    console = Console(stderr=args.output == "-")
-    table = Table(title=f"speed test: top {min(n, len(measured))} by latency")
-    for column in ("#", "", "name", "scheme", "latency", "jitter", "down", "up"):
-        table.add_column(
-            column,
-            justify="right" if column in ("latency", "jitter", "down", "up") else "left",
-            no_wrap=True,
-            overflow="ellipsis",
-        )
+    table = Table(title=f"speed test: top {min(n, len(measured))} by latency (speeds in Mbps)")
+    # only the name column may shrink on a narrow terminal; numbers must stay readable
+    table.add_column("#", justify="right", no_wrap=True, min_width=2)
+    table.add_column("name", no_wrap=True, overflow="ellipsis")
+    table.add_column("scheme", no_wrap=True)
+    table.add_column("ms", justify="right", no_wrap=True, min_width=4)
+    table.add_column("jitter", justify="right", no_wrap=True, min_width=6)
+    table.add_column("down", justify="right", no_wrap=True, min_width=4)
+    if args.speedtest_upload:
+        table.add_column("up", justify="right", no_wrap=True, min_width=4)
 
     for rank, result in enumerate(measured[:n], 1):
         if cfg.cancel.is_set():
-            return
+            return None
         mb = args.speedtest_mb
 
         def run(px, mb=mb):
@@ -809,19 +843,21 @@ def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> None:
         down, up = _with_core(result.url, cfg, port, run) or (None, None)
         result = replace(result, down_mbps=down, up_mbps=up)
         sink.update(result)
-        table.add_row(
+        name = (proxy_name(result.url) or result.url)[:24]
+        cells = [
             str(rank),
-            flag(result.country_code) if result.country_code else "",
-            (proxy_name(result.url) or result.url)[:28],
+            f"{flag(result.country_code)} {name}" if result.country_code else name,
             result.url.split(":", 1)[0],
-            f"{result.latency_ms} ms",
-            f"{result.jitter_ms or 0:.1f} ms",
-            f"{down:.1f} Mbps" if down else "-",
-            f"{up:.1f} Mbps" if up else ("-" if args.speedtest_upload else ""),
-        )
+            str(result.latency_ms),
+            f"{result.jitter_ms or 0:.1f}",
+            f"{down:.1f}" if down else "-",
+        ]
+        if args.speedtest_upload:
+            cells.append(f"{up:.1f}" if up else "-")
+        table.add_row(*cells)
     for result in measured[n:]:  # keep the refined latency of the rest too
         sink.update(result)
-    console.print(table)
+    return table
 
 
 if __name__ == "__main__":
