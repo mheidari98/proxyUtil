@@ -1,33 +1,26 @@
-.PHONY: test
+.PHONY: dev test lint format coverage build clean
 
 dev:
-	pip install setuptools pytest black twine flake8
-	# pip install -U --editable .
-
-ci:
-	py.test --junitxml=report.xml
+	uv sync --all-extras
 
 test:
-	python3 setup.py test
-	pytest
+	uv run pytest -v
+
+lint:
+	uv run ruff check .
+	uv run ruff format --check .
+
+format:
+	uv run ruff check . --fix
+	uv run ruff format .
 
 coverage:
-	py.test --cov-config .coveragerc --verbose --cov-report term --cov-report xml --cov=proxyUtil --junitxml=report.xml tests
+	uv run pytest --cov=proxyUtil --cov-report=term-missing --cov-report=xml
 
-flake8:
-	black .
-	flake8 --ignore=E501,F401,W503 proxyUtil
+build:
+	uv build
 
 clean:
-	rm -fr build dist .egg proxyUtil.egg-info
-	rm -fr .pytest_cache coverage.xml report.xml htmlcov
-	find . | grep __pycache__ | xargs rm -fr
-	find . | grep "\.pyc" | xargs rm -f
-	pip uninstall proxyUtil
-	
-install:
-	python3 setup.py install
-
-publish:
-	python3 setup.py sdist bdist_wheel
-	twine upload dist/*
+	rm -rf build dist *.egg-info .pytest_cache .ruff_cache htmlcov coverage.xml report.xml
+	find . -type d -name __pycache__ -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete

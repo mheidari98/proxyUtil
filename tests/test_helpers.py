@@ -1,0 +1,39 @@
+"""Unit tests for misc pure helpers."""
+
+import functools
+import operator
+
+from proxyUtil.parsers import tagChanger
+from proxyUtil.utils import is_json, mergeMultiDicts, split2Npart
+
+
+def test_split2Npart_distributes_items():
+    parts = list(split2Npart(list(range(10)), 3))
+    assert len(parts) == 3
+    assert sum(len(p) for p in parts) == 10
+    # round-robin reassembled stays sorted (not guaranteed, but slicing preserves order)
+    assert functools.reduce(operator.iadd, parts, []) == list(range(10))
+
+
+def test_split2Npart_more_buckets_than_items():
+    parts = list(split2Npart([1, 2], 4))
+    assert len(parts) == 4
+    assert functools.reduce(operator.iadd, parts, []) == [1, 2]
+
+
+def test_mergeMultiDicts():
+    out = mergeMultiDicts({"a": 1}, {"b": 2}, {"a": 99})
+    # later dicts override earlier
+    assert out == {"a": 99, "b": 2}
+
+
+def test_is_json_true_false():
+    assert is_json('{"a": 1}') is True
+    assert is_json("not json") is False
+
+
+def test_tagChanger_replaces_tag(sample_ss_url):
+    new = tagChanger(sample_ss_url, "newtag")
+    # tag is the part after '#' — body is allowed to be re-normalized
+    assert new.endswith("#newtag")
+    assert new.startswith("ss://")
