@@ -1,7 +1,7 @@
 # proxyUtil
 
 CLI suite for shadowsocks / vmess / vless / trojan and DNS utilities.
-Current version: **0.4.0**. Python: **>=3.10**. License: MIT.
+Current version: **0.5.0**. Python: **>=3.10**. License: MIT.
 
 ## Requirements
 - [python 3.10+](https://www.python.org/downloads)

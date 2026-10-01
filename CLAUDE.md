@@ -3,7 +3,7 @@
 ## Project
 
 `proxyUtil` is a CLI suite for shadowsocks / vmess / vless / trojan / DNS utilities, distributed
-on PyPI. Current version: **0.4.0**. Python: **>=3.10**. License: MIT. Entry point:
+on PyPI. Current version: **0.5.0**. Python: **>=3.10**. License: MIT. Entry point:
 `pyproject.toml` (hatchling backend).
 
 The codebase uses Python 3.10+ features liberally: `match`/`case` for scheme dispatch
@@ -30,6 +30,14 @@ proxyUtil/
   net.py             Network-side-effect helpers (fetchSource / ScrapURL /
                      ScrapURLs, downloadZray, downloadSingBox, getIPnCountry,
                      is_alive). Anything that touches live HTTP lives here.
+  runner.py          CoreProcess (spawn, wait_ready on all ports, reap), registry + kill_all.
+  prefilter.py       TCP-connect pre-filter (server_endpoint, needs_tcp_check, prefilter).
+  batch.py           Validate a multi-proxy core config with the core's own checker + bisect.
+  geo.py             flag(), lookup_exit() via cdn-cgi/trace (+ip-api fallback).
+  speedtest.py       measure_latency / measure_download / measure_upload via local SOCKS.
+  probe.py           Liveness probe through a local SOCKS port (live HTTP at call time).
+  results.py         Result, ResultSink (atomic write, --live, sort/country/rename), Journal
+                     (--resume), write_formats (json/b64/singbox).
   os_glue.py         OS / process / proxy-system glue (get_OS, get_arch,
                      is_tool, is_port_in_use, *RunCore/*KillCore, killProcess,
                      installDocker, set_proxychains, set_system_proxy).
@@ -52,14 +60,16 @@ proxyUtil/
     cfRecorder.py     CLI: Cloudflare DNS A-record sync (uses cloudflare>=3 SDK).
     dnsChecker.py     CLI: probe DNS resolvers, render rich.Table.
     ipExtractor.py    CLI: extract IPs from proxy URLs.
-    v2rayChecker.py   CLI: parallel proxy liveness checker; --core picks the
-                      backend (xray | v2ray | sing-box).
+    v2rayChecker.py   CLI: parallel proxy liveness checker (prefilter -> work queue
+                      -> batch cores); --core auto|xray|v2ray|sing-box.
     clashGen.py       CLI: builds Clash YAML config (needs `subconverter` docker).
     connectMe.py      CLI: simple ss/v2ray/sing-box client launcher.
     shadowChecker.py  CLI: parallel ss-libev liveness checker.
     sslocal2ssURI.py  CLI: ss-local cmdline → ss:// URI.
     ssURI2sslocal.py  CLI: ss:// URI → ss-local cmdline.
-tests/                pytest unit + CLI smoke (70+ cases).
+tests/                pytest unit + CLI smoke (120+ cases). tests/helpers.py + fixtures/fake_core.py
+                      = offline fake core/HTTP target (use for any checker test).
+scripts/              bench_checker.py: real-network bench (never in CI).
 .github/workflows/    test.yml + python-publish.yml (on tag).
 pyproject.toml        hatchling, [project.scripts]=10 CLIs (all under cli/).
 .python-version       3.11 (dev env pin only; floor is 3.10).
@@ -89,7 +99,7 @@ uv run basedpyright proxyUtil        # type check
 uv build                             # build sdist + wheel into dist/
 pre-commit install                   # (optional) git hooks
 uv run cdnGen --help                 # any of the 10 CLIs
-uv run cdnGen --version              # prints "cdnGen 0.4.0"
+uv run cdnGen --version              # prints "cdnGen 0.5.0"
 ```
 
 The 10 CLIs: `cdnGen, dnsChecker, cfRecorder, ipExtractor, v2rayChecker, clashGen, connectMe,
@@ -119,8 +129,17 @@ shadowChecker, sslocal2ssURI, ssURI2sslocal`. All accept `--version` and `--help
 
 ## Pitfalls
 
+- **xray removed `allowInsecure` on 2026-06-01**; any config containing it fails. Never put it
+  in a template unconditionally. xray/v2ray also lack legacy ss ciphers (see
+  `cores._XRAY_SS_METHODS`); `CoreSpec.unsupported_reason` encodes both.
+- **Test ports must stay below 32768** (Linux ephemeral range starts there; a stray outgoing
+  connection can steal a port a core is about to bind and cause flaky tests). Real-core tests
+  (`@pytest.mark.core`) skip when a binary is missing; `tests/helpers.py` + `fake_core.py`
+  cover the rest offline.
+- A batch core opens inbounds in no particular order: wait for *every* port, not the last.
+
 - `downloadZray`, `downloadSingBox`, `ScrapURL`, `is_alive`, `getIPnCountry`, `getIP` (in
-  `proxyUtil.net`) hit external URLs / DNS — never call from tests. Mark any future test that
+  `proxyUtil.net`) and `probe.probe_liveness` hit external URLs / DNS — never call from tests. Mark any future test that
   exercises them with `@pytest.mark.network`. Importing `proxyUtil.net` itself is fine; calling
   those functions is what triggers I/O.
 - `cfRecorder` requires real Cloudflare credentials. The CLI accepts the literal email value

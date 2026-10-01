@@ -1,5 +1,99 @@
 # Changes
 
+## 0.5.0 — v2rayChecker overhaul
+
+Measured on the 13,813-proxy bench dump (live counts there are stale; timings are real):
+
+| core     | before (May bench) | now     |
+|----------|-------------------:|--------:|
+| sing-box |             264 s  | 134 s   |
+| xray     |             450 s  | 140 s   |
+| v2ray    |             483 s  | 199 s   |
+
+62% of servers are rejected by a TCP connect before any core starts, and memory no longer
+scales with concurrency (one core process serves a whole batch of proxies).
+
+### Breaking (v2rayChecker)
+- **Default core is `auto`** (sing-box if installed, else xray, else v2ray). sing-box speaks
+  every scheme and legacy ss ciphers; use `-c xray|v2ray|sing-box` to force one.
+- **Default concurrency is `-T 300`** (was 10) because batch mode makes it cheap;
+  `--no-batch` restores one-process-per-proxy and the old default of 10.
+- **Geo lookup no longer decides liveness.** It used to run for every live proxy and drop the
+  proxy if ip-api failed (20% of live xray configs in the May bench). Geo is now opt-in via
+  `--geo` (implied by `--rename`, `--country`, `--sort country`), and a failed lookup only
+  means "no country". `-i/--ignore` (which worked backwards) is a deprecated no-op that warns.
+- **Stricter probe.** `generate_204` endpoints must answer exactly 204; any other `-d` target
+  must answer 2xx/3xx. Block pages and captive portals no longer count as live; expect lower
+  (more honest) counts. Latency is real milliseconds (was 10 ms units).
+- `--t2exec` is now the *maximum* wait for a core to open its ports (default 5 s) instead of a
+  fixed sleep; the checker proceeds as soon as they are up (~25 ms). `--t2kill` is a
+  deprecated no-op. `-t/--timeout` accepts floats.
+- Exit code is 130 when interrupted. `--url` is repeatable on `v2rayChecker`, `shadowChecker`
+  and `clashGen`; collected proxies keep first-seen order.
+
+### Fixes
+- **xray 26 rejected every TLS config.** The xray templates hardcoded `allowInsecure: true`,
+  and xray-core removed it on 2026-06-01 (`"allowInsecure" will be removed automatically after
+  2026-06-01`). Every TLS vmess/vless/trojan failed, silently counted as "dead". Templates no
+  longer force it. Configs that explicitly ask to skip certificate verification are reported
+  as unsupported by xray with a pointer to `-c sing-box`.
+- A core that exits before opening its port (e.g. `unknown cipher method: aes-256-cfb`, which
+  explained xray finding 26 live ss configs vs sing-box's 397) is `config_error` with the
+  core's own message, not a dead proxy. xray/v2ray cipher support was verified against the real
+  binaries (v2ray lacks xchacha20 and ss-2022) and unsupported configs are skipped up front.
+- **Security:** the checker's xray inbound bound `0.0.0.0` with no auth, turning every config
+  under test into an open proxy. It now binds `127.0.0.1` (`createConfig(listen=...)`;
+  `connectMe` keeps its previous default).
+- Ctrl+C / SIGTERM: partial results are written (atomically) and every spawned core is killed
+  and reaped. No orphaned processes or zombies; core stdout is no longer an unread pipe.
+- A batch is only "ready" once *all* of its ports accept connections (cores don't open inbounds
+  in config order; waiting for the last one caused intermittent connection-refused).
+- vmess/vless configs with junk transport fields (`net=""`, `ws🌐`, `tcp@channel`, missing
+  `net`/`tls`) are normalised instead of warning or crashing (`utils.normalize_network`).
+- Free-port search binds instead of connecting, so bound-but-idle ports are skipped. Raises the
+  open-file limit when it can (pre-filter uses up to 2000 sockets).
+- Probe errors now name the root cause (`NewConnectionError: ... Connection refused`).
+
+### Features
+- **TCP pre-filter** (`proxyUtil.prefilter`): servers that never answer a TCP connect are
+  dropped without starting a core. UDP schemes (hy/hy2/tuic/juicity/wireguard) and kcp/quic
+  transports are never judged by it. `--no-prefilter`, `--prefilter-timeout`,
+  `--prefilter-attempts`.
+- **Batch mode** (`proxyUtil.batch`, default): one core process serves up to `--batch-size`
+  (100) proxies via an inbound+outbound pair each. The config is validated with the core's own
+  checker (`xray run -test`, `v2ray test`, `sing-box check`) and bisected to isolate bad
+  outbounds; if a batch still can't start it falls back to a process per proxy.
+  `--no-batch` disables it.
+- Duplicates that differ only by name (URL fragment / vmess `ps`) are tested once.
+- Shared work queue instead of static partitioning (no straggler tail).
+- `--max-live K` stops once K healthy proxies are found; with `--reuse`, last run's healthy
+  proxies are tried first.
+- `--live` appends each healthy proxy to the output as it is found (`--fsync` for durability,
+  `-o -` for stdout); the file is rewritten sorted at the end. Use `tail -F`.
+- `--resume` skips proxies an interrupted run already tested (journal `<output>.state`,
+  removed after a completed run).
+- **Country and naming:** exit country is resolved *through the proxy* (Cloudflare
+  `cdn-cgi/trace`, ip-api fallback), so CDN-fronted configs get the real exit country.
+  `--country DE,NL` filters, `--rename [TEMPLATE]` rewrites names (default
+  `🇩🇪 DE 312ms | original`), `--sort latency|country|scheme|speed`. Opt-in; default output is
+  byte-identical to the input URLs.
+- `--format txt|json|b64|singbox` (repeatable): full result data, a base64 subscription, or a
+  ready-to-import sing-box client config with a `urltest` group.
+- `--retries N` (timeouts only), `--stable K` (K probes, tolerate one miss, report median
+  latency + jitter), `--verify URL` (second-stage target, e.g. `https://web.telegram.org`).
+- `--speedtest [N]` (default 10): re-measures latency/jitter of the best candidates, then times
+  real downloads of the top N one at a time and shows a table; `--speedtest-time`,
+  `--speedtest-mb`, `--speedtest-upload`, `--speedtest-url`.
+- Sources: `--sources FILE`, concurrent fetch, failed sources are logged with the reason.
+- Progress bar (TTY) and an end-of-run summary by status and by scheme.
+- New modules: `runner`, `probe`, `results`, `prefilter`, `batch`, `geo`, `speedtest`.
+  `scripts/bench_checker.py` replaces the ad-hoc bench script.
+
+### Not done
+- Offline GeoIP database (`--geo server`): the through-the-proxy lookup is free and more
+  accurate for CDN-fronted configs, so a mmdb dependency wasn't worth it yet.
+- `--config` TOML file: `tomllib` needs Python 3.11 and the package floor is 3.10.
+
 ## Unreleased — modernize sweep across the package
 
 Backwards-compatible code-quality pass; no scheme matrix or CLI surface change.
