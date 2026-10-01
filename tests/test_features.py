@@ -267,7 +267,19 @@ def test_resume_end_to_end_with_real_main(tmp_path, http, monkeypatch):
     urls = [f"ss://u{i}@h:1#{'serve' if i % 2 else 'exit'}" for i in range(10)]
     inp, out = tmp_path / "in.txt", tmp_path / "out.txt"
     inp.write_text("\n".join(urls) + "\n")
-    args = ["-f", str(inp), "-o", str(out), "-T", "4", "--no-prefilter", "-l", "27000"]
+    args = [
+        "-f",
+        str(inp),
+        "-o",
+        str(out),
+        "-T",
+        "4",
+        "--no-prefilter",
+        "-d",
+        "http://x.test/generate_204",
+        "-l",
+        "27000",
+    ]
 
     # a previous run that tested the first 6 proxies and was interrupted
     journal = Journal(f"{out}.state")
@@ -298,7 +310,19 @@ def test_resume_skips_already_tested_proxies(tmp_path, http, monkeypatch):
         journal.record(live(url, 5))
     journal.close()
     vc.main(
-        ["-f", str(inp), "-o", str(out), "--no-batch", "--no-prefilter", "-l", "27100", "--resume"]
+        [
+            "-f",
+            str(inp),
+            "-o",
+            str(out),
+            "--no-batch",
+            "--no-prefilter",
+            "-d",
+            "http://x.test/generate_204",
+            "-l",
+            "27100",
+            "--resume",
+        ]
     )
     assert sorted(seen) == sorted(urls[4:])
 
@@ -329,7 +353,17 @@ def test_rename_and_country_imply_geo(tmp_path, http, monkeypatch):
     monkeypatch.setattr(vc, "lookup_exit", lambda *_: ExitInfo("1.1.1.1", "DE", "Germany"))
     inp, out = tmp_path / "in.txt", tmp_path / "out.txt"
     inp.write_text("vless://11111111-1111-1111-1111-111111111111@h:1?type=ws#orig\n")
-    base = ["-f", str(inp), "-o", str(out), "--no-prefilter", "-l", "27200"]
+    base = [
+        "-f",
+        str(inp),
+        "-o",
+        str(out),
+        "--no-prefilter",
+        "-d",
+        "http://x.test/generate_204",
+        "-l",
+        "27200",
+    ]
     assert vc.main([*base, "--rename"]) is None
     from urllib.parse import unquote
 
@@ -401,3 +435,37 @@ def test_speedtest_default_count_is_ten():
     assert vc.build_parser().parse_args(["--speedtest"]).speedtest == 10
     assert vc.build_parser().parse_args(["--speedtest", "3"]).speedtest == 3
     assert vc.build_parser().parse_args([]).speedtest is None
+
+
+def test_renamed_lines_are_single_tokens_and_reparse_for_every_scheme():
+    # Regression: names with spaces / '|' were written raw into the fragment, so the line
+    # split on whitespace when re-read (this tool, or any client) and lost the name.
+    from proxyUtil.parsers import parseContent, proxy_name
+    from proxyUtil.uri import quote_fragment
+
+    vm = (
+        "vmess://"
+        + base64.b64encode(
+            json.dumps({"v": "2", "ps": "o", "add": "h", "port": "1", "id": "x"}).encode()
+        ).decode()
+    )
+    urls = [
+        "vless://11111111-1111-1111-1111-111111111111@h:1?type=ws#o",
+        "trojan://pw@h:1?security=tls#o",
+        "hysteria2://pw@h:1#o",
+        "anytls://pw@h:1#o",
+        SS + "#o",
+        vm,
+    ]
+    rename = make_renamer("{flag} {cc} {ms}ms | {name}")
+    for url in urls:
+        line = rename(live(url, 120, "DE"))
+        assert len(line.split()) == 1, line  # no raw whitespace
+        assert parseContent(line) == [line]  # survives re-reading
+        if not url.startswith("vmess"):
+            assert "|" not in line.split("#", 1)[1]
+        assert proxy_name(line) == "🇩🇪 DE 120ms | o"
+        # renaming twice must not stack or truncate names
+        assert proxy_name(rename(live(line, 50, "DE"))) == "🇩🇪 DE 50ms | 🇩🇪 DE 120ms | o"
+    assert quote_fragment("Woman,Life,Freedom") == "Woman,Life,Freedom"  # readable ASCII untouched
+    assert quote_fragment("a b|c#d%") == "a%20b%7Cc%23d%25"

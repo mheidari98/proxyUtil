@@ -55,6 +55,7 @@ from proxyUtil.speedtest import (
 from proxyUtil.utils import format_geo
 
 FREE_PROXY_URL = "https://raw.githubusercontent.com/mheidari98/.proxy/main/all"
+DEFAULT_PROBE_URL = "https://www.gstatic.com/generate_204"
 CHECK_LISTEN = "127.0.0.1"  # a checked config is untrusted and unauthenticated: never LAN-visible
 DEFAULT_THREADS = 300
 DEFAULT_THREADS_NO_BATCH = 10  # one core process each: ~35 MB apiece, so keep it modest
@@ -299,7 +300,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Simple proxy checker")
     add_version_arg(parser)
     parser.add_argument(
-        "-d", "--domain", help="test connect domain", default="http://www.gstatic.com/generate_204"
+        "-d",
+        "--domain",
+        help="probe URL; HTTPS by default because a proxy that answers plain HTTP but "
+        "black-holes TLS is useless for real traffic (default: %(default)s)",
+        default=DEFAULT_PROBE_URL,
     )
     parser.add_argument(
         "-t", "--timeout", help="probe timeout in seconds, default is 3", default=3, type=float
@@ -776,7 +781,10 @@ def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> None:
     table = Table(title=f"speed test: top {min(n, len(measured))} by latency")
     for column in ("#", "", "name", "scheme", "latency", "jitter", "down", "up"):
         table.add_column(
-            column, justify="right" if column in ("latency", "jitter", "down", "up") else "left"
+            column,
+            justify="right" if column in ("latency", "jitter", "down", "up") else "left",
+            no_wrap=True,
+            overflow="ellipsis",
         )
 
     for rank, result in enumerate(measured[:n], 1):

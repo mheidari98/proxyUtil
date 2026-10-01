@@ -10,7 +10,7 @@ import re
 from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 from .schemes import FRAGMENT_TAGGED, proxyScheme
-from .uri import Create_ss_url_withPlugin, processShadowJson
+from .uri import Create_ss_url_withPlugin, processShadowJson, quote_fragment
 from .utils import base64Decode, is_truthy, isBase64
 
 __all__ = [
@@ -318,7 +318,7 @@ def tagChanger(url, tag="4MahsaAmini"):
         return f"vmess://{base64.b64encode(json.dumps(dict(sorted(jsonLoad.items()))).encode()).decode()}"
 
     if loaded.scheme in FRAGMENT_TAGGED:
-        return loaded._replace(fragment=tag).geturl()
+        return loaded._replace(fragment=quote_fragment(tag)).geturl()
 
     return url  # scheme has no tag slot (naive)
 
