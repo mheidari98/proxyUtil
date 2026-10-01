@@ -53,6 +53,9 @@ class Result:
     jitter_ms: float | None = None
     down_mbps: float | None = None
     up_mbps: float | None = None
+    down_error: str | None = None
+    up_error: str | None = None
+    down_source: str | None = None
 
 
 class _Blank(dict):

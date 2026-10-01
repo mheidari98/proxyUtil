@@ -92,7 +92,11 @@ scales with concurrency (one core process serves a whole batch of proxies).
   latency + jitter), `--verify URL` (second-stage target, e.g. `https://web.telegram.org`).
 - `--speedtest [N]` (default 10): re-measures latency/jitter of the best candidates, then times
   real downloads of the top N one at a time and shows a table; `--speedtest-time`,
-  `--speedtest-mb`, `--speedtest-upload`, `--speedtest-url`.
+  `--speedtest-mb`, `--speedtest-upload`, `--speedtest-url`. Downloads fall back from
+  Cloudflare to OVH and cachefly (Cloudflare answers HTTP 429 when many proxies share exit
+  IPs), tolerate slow first bytes (10 s read timeout), keep the throughput measured before a
+  proxy cuts the stream, and failures are explained in the table caption and in
+  `--format json` (`down_error`, `up_error`, `down_source`).
 - Sources: `--sources FILE`, concurrent fetch, failed sources are logged with the reason.
 - Progress bar (TTY) and an end-of-run summary by status and by scheme. Per-config build
   errors and transport warnings are hidden in a normal run (they scribble over the bar and

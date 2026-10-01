@@ -49,7 +49,9 @@ from proxyUtil.results import (
 from proxyUtil.runner import CoreExited, CoreNotReady, CoreProcess, kill_all
 from proxyUtil.speedtest import (
     SPEEDTEST_BASE,
-    measure_download,
+    Transfer,
+    download_urls,
+    measure_download_any,
     measure_latency,
     measure_upload,
 )
@@ -473,7 +475,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--speedtest-upload", action="store_true", help="also measure upload (uses more data)"
     )
     parser.add_argument(
-        "--speedtest-url", default=SPEEDTEST_BASE, help="server with /__down and /__up endpoints"
+        "--speedtest-url",
+        default=SPEEDTEST_BASE,
+        help="server with /__down and /__up endpoints. The default (Cloudflare) falls back to "
+        "OVH and cachefly for downloads when it rate-limits (HTTP 429) or times out",
     )
     parser.add_argument(
         "--resume",
@@ -785,6 +790,23 @@ def _with_core(url: str, cfg: CheckerCfg, port: int, fn):
         return None
 
 
+def _failure_caption(errors: list[str], total: int, what: str = "download") -> str:
+    """One line explaining why transfers failed, e.g. `download failed for 3/5: HTTP 429
+    (rate limited) x2, timeout x1`. Full per-source reasons are in --format json."""
+    kinds = Counter(
+        "HTTP 429 (rate limited)"
+        if "429" in e
+        else "timeout"
+        if "timeout" in e
+        else "core did not start"
+        if "core did not" in e
+        else "failed"
+        for e in errors
+    )
+    detail = ", ".join(f"{kind} x{n}" for kind, n in kinds.most_common())
+    return f"{what} failed for {len(errors)}/{total}: {detail}"
+
+
 def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> Table | None:
     """Re-rank the best proxies by a steadier latency, then time real downloads on the
     top N one at a time (parallel tests would share, and so skew, your uplink). Returns the
@@ -821,15 +843,17 @@ def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> Table | None:
     if args.speedtest_upload:
         table.add_column("up", justify="right", no_wrap=True, min_width=4)
 
+    failures: list[str] = []
+    up_failures: list[str] = []
     for rank, result in enumerate(measured[:n], 1):
         if cfg.cancel.is_set():
             return None
         mb = args.speedtest_mb
 
         def run(px, mb=mb):
-            down = measure_download(
+            down = measure_download_any(
                 px,
-                base=args.speedtest_url,
+                download_urls(args.speedtest_url, int(mb * 1024 * 1024)),
                 max_seconds=args.speedtest_time,
                 max_bytes=int(mb * 1024 * 1024),
             )
@@ -840,9 +864,23 @@ def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> Table | None:
             )
             return down, up
 
-        down, up = _with_core(result.url, cfg, port, run) or (None, None)
-        result = replace(result, down_mbps=down, up_mbps=up)
+        no_core = Transfer(None, error="core did not start")
+        down, up = _with_core(result.url, cfg, port, run) or (no_core, no_core)
+        result = replace(
+            result,
+            down_mbps=down.mbps,
+            up_mbps=up.mbps if up else None,
+            down_error=down.error,
+            up_error=up.error if up else None,
+            down_source=down.source,
+        )
         sink.update(result)
+        if args.speedtest_upload and (up is None or up.mbps is None):
+            up_failures.append((up.error if up else "") or "")
+        if down.mbps is None:
+            failures.append(down.error or "")
+        elif down.source and down.source != urlsplit(args.speedtest_url).hostname:
+            logging.info(f"speedtest: {down.source} used for download (primary failed)")
         name = (proxy_name(result.url) or result.url)[:24]
         cells = [
             str(rank),
@@ -850,13 +888,20 @@ def _speedtest(sink: ResultSink, cfg: CheckerCfg, args) -> Table | None:
             result.url.split(":", 1)[0],
             str(result.latency_ms),
             f"{result.jitter_ms or 0:.1f}",
-            f"{down:.1f}" if down else "-",
+            f"{down.mbps:.1f}" if down.mbps is not None else "fail",
         ]
         if args.speedtest_upload:
-            cells.append(f"{up:.1f}" if up else "-")
+            cells.append(f"{up.mbps:.1f}" if up and up.mbps is not None else "fail")
         table.add_row(*cells)
     for result in measured[n:]:  # keep the refined latency of the rest too
         sink.update(result)
+    captions = []
+    if failures:
+        captions.append(_failure_caption(failures, len(measured[:n])))
+    if up_failures:
+        captions.append(_failure_caption(up_failures, len(measured[:n]), "upload"))
+    if captions:
+        table.caption = "; ".join(captions)
     return table
 
 
