@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import random
 import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -24,10 +25,22 @@ try:  # POSIX only
 except ImportError:  # pragma: no cover
     resource = None
 
-__all__ = ["max_workers_for_fds", "needs_tcp_check", "prefilter", "server_endpoint"]
+__all__ = [
+    "link_is_narrow",
+    "max_workers_for_fds",
+    "needs_tcp_check",
+    "pick_workers",
+    "prefilter",
+    "server_endpoint",
+]
 
 UDP_SCHEMES = frozenset({"hysteria", "hysteria2", "hy2", "tuic", "juicity", "wireguard"})
 UDP_TRANSPORTS = frozenset({"kcp", "mkcp", "quic"})
+
+WIDE_WORKERS = 2000
+NARROW_WORKERS = 50
+_LOW_SAMPLE = 300  # endpoints probed at NARROW_WORKERS sockets
+_HIGH_SAMPLE = 1200  # probed at 1000 sockets: a burst smaller than ~500 is not lost even on LTE
 
 
 def server_endpoint(url: str) -> tuple[str, int] | None:
@@ -99,10 +112,47 @@ def _tcp_ok(host: str, port: int, timeout: float, attempts: int) -> bool:
     return False
 
 
+def link_is_narrow(ok_low: int, n_low: int, ok_high: int, n_high: int) -> bool:
+    """True when many sockets at once connect clearly less often than few (lossy access link).
+
+    Measured from an LTE home link: 86% of live servers still answered at 50 sockets, 49% at
+    200 and 8% at 2000; on an office line the rate does not depend on the socket count."""
+    if not (n_low and n_high and ok_low):
+        return False
+    return ok_high / n_high < 0.85 * (ok_low / n_low)
+
+
+def pick_workers(
+    probes: list[tuple[str, int]], timeout: float, cancel: threading.Event | None = None
+) -> int:
+    """`WIDE_WORKERS` or `NARROW_WORKERS`, from the connect rate of two random samples of
+    *probes*: one at 50 sockets, one at 1000. Too few endpoints to calibrate: narrow (such a
+    list is quick anyway, and a burst of a thousand is already enough to lose connects)."""
+    if len(probes) < _LOW_SAMPLE + _HIGH_SAMPLE:
+        return NARROW_WORKERS
+
+    def connected(sample, sockets):
+        def check(probe):
+            return not (cancel and cancel.is_set()) and _tcp_ok(probe[0], probe[1], timeout, 1)
+
+        with ThreadPoolExecutor(max_workers=sockets) as pool:
+            return sum(pool.map(check, sample))
+
+    sample = random.sample(probes, _LOW_SAMPLE + _HIGH_SAMPLE)
+    low, high = sample[:_LOW_SAMPLE], sample[_LOW_SAMPLE:]
+    ok_low, ok_high = connected(low, NARROW_WORKERS), connected(high, 1000)
+    narrow = link_is_narrow(ok_low, len(low), ok_high, len(high))
+    logging.info(
+        f"link: {'narrow' if narrow else 'wide'} (connect rate {ok_low / len(low):.0%} at "
+        f"{NARROW_WORKERS} sockets, {ok_high / len(high):.0%} at 1000)"
+    )
+    return NARROW_WORKERS if narrow else WIDE_WORKERS
+
+
 def prefilter(
     urls: list[str],
     *,
-    workers: int = 2000,
+    workers: int | None = None,
     timeout: float = 2.0,
     attempts: int = 1,
     cancel: threading.Event | None = None,
@@ -120,6 +170,9 @@ def prefilter(
 
     Measured on 13.8k real configs: a second attempt on timeouts costs ~25 s and recovers
     nothing beyond run-to-run noise, so one attempt is the default.
+
+    *workers* is the number of sockets in flight; None picks it from the link (`pick_workers`):
+    a lossy access link drops most connects when too many are tried at once.
 
     Configs sharing an ip:port are probed once. Anything we cannot judge (UDP,
     unparsable endpoint) is kept."""
@@ -144,8 +197,9 @@ def prefilter(
     unique = sorted({probe for probe in probes.values() if probe})
     alive: dict[tuple[str, int], bool] = {}
     if unique:
-        workers = max_workers_for_fds(min(workers, len(unique)))
-        if workers < min(2000, len(unique)):
+        wanted = pick_workers(unique, timeout, cancel) if workers is None else workers
+        workers = max_workers_for_fds(min(wanted, len(unique)))
+        if workers < min(wanted, len(unique)):
             logging.warning(f"prefilter limited to {workers} sockets by the open-file limit")
 
         def check(probe):

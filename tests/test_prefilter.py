@@ -143,11 +143,53 @@ def test_fd_limit_clamps_when_it_cannot_be_raised(monkeypatch):
     assert pf.max_workers_for_fds(2000) == 1024 - 128
 
 
-def test_defaults_are_one_attempt_and_2000_sockets():
+def test_defaults_are_one_attempt_and_workers_from_the_link():
     import inspect
 
     sig = inspect.signature(pf.prefilter).parameters
-    assert sig["attempts"].default == 1 and sig["workers"].default == 2000
+    assert sig["attempts"].default == 1 and sig["workers"].default is None
+
+
+@pytest.mark.parametrize(
+    ("ok_low", "ok_high", "narrow"),
+    [(150, 140, False), (150, 130, False), (150, 100, True), (150, 30, True), (0, 0, False)],
+)
+def test_link_is_narrow_compares_connect_rates(ok_low, ok_high, narrow):
+    assert pf.link_is_narrow(ok_low, 300, ok_high, 300) is narrow
+
+
+def test_pick_workers_is_narrow_without_enough_endpoints_to_calibrate():
+    assert pf.pick_workers([("192.0.2.1", 1)] * 10, timeout=0.1) == pf.NARROW_WORKERS
+
+
+def test_pick_workers_goes_narrow_when_bursts_lose_connects(monkeypatch):
+    import threading
+
+    probes = [(f"192.0.2.{i % 250}", 1000 + i) for i in range(2000)]
+    in_flight, peak, lock = 0, 0, threading.Lock()
+
+    def lossy(host, port, timeout, attempts):
+        nonlocal in_flight, peak
+        with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+            burst = in_flight > 100
+        try:
+            threading.Event().wait(0.02)
+            return not burst
+        finally:
+            with lock:
+                in_flight -= 1
+
+    monkeypatch.setattr(pf, "_tcp_ok", lossy)
+    assert pf.pick_workers(probes, timeout=0.1) == pf.NARROW_WORKERS
+    assert peak > 100
+
+
+def test_pick_workers_stays_wide_when_bursts_are_fine(monkeypatch):
+    probes = [(f"192.0.2.{i % 250}", 1000 + i) for i in range(2000)]
+    monkeypatch.setattr(pf, "_tcp_ok", lambda *_a: True)
+    assert pf.pick_workers(probes, timeout=0.1) == pf.WIDE_WORKERS
 
 
 @pytest.mark.parametrize("host", ["a" * 70 + ".example.com", "a..example.com"])

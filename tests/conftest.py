@@ -5,6 +5,14 @@ import pytest
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def _offline_dns(monkeypatch):
+    """resolve_hosts must not reach public resolvers from tests."""
+    from proxyUtil import net
+
+    monkeypatch.setattr(net, "AUTO_RESOLVERS", ())
+
+
 @pytest.fixture
 def fixtures_dir() -> Path:
     return FIXTURES

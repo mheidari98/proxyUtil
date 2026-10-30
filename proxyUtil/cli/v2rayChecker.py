@@ -394,6 +394,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
     )
     parser.add_argument(
+        "--prefilter-workers",
+        metavar="N",
+        help="sockets in flight for the pre-filter; default picks 50 or 2000 from a quick "
+        "test of your link (a lossy link drops most connects when too many are tried at once)",
+        type=int,
+    )
+    parser.add_argument(
         "--prefilter-attempts",
         help="TCP connect attempts per server when it times out, default is 1",
         default=1,
@@ -770,6 +777,7 @@ def _screen(
     dns_stats: dict[str, int] = {}
     kept, dropped = prefilter(
         candidates,
+        workers=args.prefilter_workers,
         timeout=args.prefilter_timeout,
         attempts=args.prefilter_attempts,
         cancel=cfg.cancel,

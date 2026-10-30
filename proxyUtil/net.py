@@ -55,6 +55,10 @@ READ_TIMEOUT = 10
 DEADLINE = 30
 MAX_BYTES = 25 * 1024 * 1024
 USER_AGENT = "proxyUtil"
+# Tried first when no DNS server is given: a home modem's forwarder (and an ISP resolver) can
+# answer only ~25 names/s, a public resolver ~130/s. Empty tuple = system resolver only.
+AUTO_RESOLVERS = ("1.1.1.1", "8.8.8.8", "9.9.9.9")
+SYSTEM_RESOLVER = "system"
 
 
 def _v4_first(addrs) -> list[str]:
@@ -72,13 +76,16 @@ def _lookup_system(host: str) -> list[str] | None:
 
 
 def _lookup_do53(host: str, server: str, timeout: float) -> list[str] | None:
-    """A, then AAAA, through *server* with dnspython; every query has a real timeout."""
+    """A, then AAAA, through *server* with dnspython; every query has a real timeout.
+
+    `[]` means the server answered but had no address (NXDOMAIN, no records); None means it
+    did not answer at all."""
     for rr in ("A", "AAAA"):
         try:
             req = dns.message.make_query(host, rr)
             res, _tcp = dns.query.udp_with_fallback(req, server, timeout=timeout)
         except (OSError, UnicodeError, dns.exception.DNSException):
-            continue
+            return None
         addrs = [
             item.address
             for rrset in res.answer
@@ -87,45 +94,17 @@ def _lookup_do53(host: str, server: str, timeout: float) -> list[str] | None:
         ]
         if addrs:
             return _v4_first(addrs)
-    return None
+    return []
 
 
-def resolve_hosts(
-    hosts,
-    deadline: float = 10.0,
-    workers: int = 200,
-    *,
-    dns_server: str | None = None,
-    cancel: threading.Event | None = None,
-    stats: dict[str, int] | None = None,
-) -> dict[str, list[str] | None]:
-    """Resolve each distinct hostname once; `{host: [ip, ...] | None}`, IPv4 first.
-
-    Lookups run on daemon threads and we stop waiting at *deadline*: a glibc lookup that
-    falls back to TCP has no read timeout and can hang ~20 min, and ThreadPoolExecutor would
-    join that thread at exit. Failed and still-pending names map to None. IP literals map to
-    themselves. With *dns_server*, names go through that Do53 server (dnspython, bounded
-    per-query timeout) instead of the system resolver. *stats*, if given, receives
-    `lookups`, `failed` and `pending` counts."""
-    out: dict[str, list[str] | None] = {}
-    names: list[str] = []
-    for host in dict.fromkeys(hosts):
-        out[host] = [str(ip)] if (ip := ip_literal(host)) else None
-        if ip is None:
-            names.append(host)
-
+def _run_lookups(names, lookup, workers, stall, max_wait, cancel):
+    """`({name: result}, pending)`: run *lookup* on daemon threads until every name is done,
+    nothing new has arrived for *stall* seconds, or *max_wait* has passed."""
     tasks: queue.SimpleQueue[str] = queue.SimpleQueue()
     for name in names:
         tasks.put(name)
     done: queue.SimpleQueue[tuple[str, list[str] | None]] = queue.SimpleQueue()
     stop = threading.Event()
-    query_timeout = max(0.1, min(3.0, deadline))
-
-    lookup = (
-        _lookup_system
-        if dns_server is None
-        else lambda name: _lookup_do53(name, dns_server, query_timeout)
-    )
 
     def work():
         while not stop.is_set():
@@ -138,25 +117,104 @@ def resolve_hosts(
     for i in range(min(workers, len(names))):
         threading.Thread(target=work, name=f"resolve-{i}", daemon=True).start()
 
-    end = time.monotonic() + deadline
-    received = 0
-    while received < len(names) and not (cancel is not None and cancel.is_set()):
-        wait = end - time.monotonic()
-        if wait <= 0:
+    out: dict[str, list[str] | None] = {}
+    now = time.monotonic()
+    last, hard_end = now, now + max_wait
+    while len(out) < len(names) and not (cancel is not None and cancel.is_set()):
+        now = time.monotonic()
+        if now - last >= stall or now >= hard_end:
             break
         try:
-            name, ips = done.get(timeout=min(wait, 0.2))
+            name, ips = done.get(timeout=0.2)
         except queue.Empty:
             continue
         out[name] = ips
-        received += 1
+        last = time.monotonic()
     stop.set()  # workers still queued up must not start new lookups
+    return out, len(names) - len(out)
+
+
+def _public_lookup(timeout: float):
+    """Lookup through AUTO_RESOLVERS; None for a name that gets no address from them.
+
+    Gives up (instantly None) once 20 queries in a row went unanswered, i.e. UDP to public
+    resolvers is blocked here, so the system resolver gets the time instead."""
+    silent = ok = 0
+
+    def lookup(name: str) -> list[str] | None:
+        nonlocal silent, ok
+        if silent >= 20 and not ok:
+            return None
+        found = _lookup_do53(name, AUTO_RESOLVERS[hash(name) % len(AUTO_RESOLVERS)], timeout)
+        if found is None:
+            silent += 1
+        else:
+            ok += 1
+        return found or None
+
+    return lookup
+
+
+def resolve_hosts(
+    hosts,
+    deadline: float = 10.0,
+    workers: int = 200,
+    *,
+    dns_server: str | None = None,
+    cancel: threading.Event | None = None,
+    stats: dict[str, int] | None = None,
+    max_wait: float = 180.0,
+) -> dict[str, list[str] | None]:
+    """Resolve each distinct hostname once; `{host: [ip, ...] | None}`, IPv4 first.
+
+    Lookups run on daemon threads. We stop waiting once nothing new has arrived for
+    *deadline* seconds (or after *max_wait*): a glibc lookup that falls back to TCP has no read
+    timeout and can hang ~20 min, and ThreadPoolExecutor would join that thread at exit.
+    Failed and still-pending names map to None. IP literals map to themselves.
+
+    *dns_server* picks the resolver: an address (Do53 via dnspython, bounded per-query
+    timeout), `"system"`, or None for auto. Auto asks public resolvers first, since a home
+    modem's forwarder answers ~25 names/s, then asks the system resolver (few at a time) about
+    the names they could not resolve: some only resolve from inside Iran.
+    *stats*, if given, receives `lookups`, `failed` and `pending` counts."""
+    out: dict[str, list[str] | None] = {}
+    names: list[str] = []
+    for host in dict.fromkeys(hosts):
+        out[host] = [str(ip)] if (ip := ip_literal(host)) else None
+        if ip is None:
+            names.append(host)
+
+    query_timeout = max(0.1, min(3.0, deadline))
+    pending = 0
+    if dns_server not in (None, SYSTEM_RESOLVER):
+        found, pending = _run_lookups(
+            names,
+            lambda name: _lookup_do53(name, str(dns_server), query_timeout) or None,
+            workers,
+            deadline,
+            max_wait,
+            cancel,
+        )
+        out.update(found)
+    elif dns_server is None and AUTO_RESOLVERS:
+        found, _ = _run_lookups(
+            names, _public_lookup(query_timeout), workers, deadline, max_wait, cancel
+        )
+        out.update(found)
+        retry = [name for name in names if out[name] is None]
+        found, pending = _run_lookups(
+            retry, _lookup_system, min(workers, 50), deadline, max_wait, cancel
+        )
+        out.update({name: ips for name, ips in found.items() if ips})
+    else:
+        found, pending = _run_lookups(names, _lookup_system, workers, deadline, max_wait, cancel)
+        out.update(found)
 
     if stats is not None:
         stats.update(
             lookups=len(names),
             failed=sum(1 for n in names if out[n] is None),
-            pending=len(names) - received,
+            pending=pending,
         )
     return out
 

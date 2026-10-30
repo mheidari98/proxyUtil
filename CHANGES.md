@@ -5,10 +5,18 @@
 ### Fixes
 - **The TCP prefilter could hang for ~20 minutes.** One `getaddrinfo` that fell back to TCP
   has no read timeout, and the thread pool waited for it (a real run spent 1072 s of 1229 s
-  there). Hostnames are now resolved once, up front, on daemon threads with a 10 s deadline
-  (`net.resolve_hosts`); unresolved names are dropped as `dns`. New `v2rayChecker --dns ADDR`
-  resolves through a Do53 server of your choice, and a hint names the system resolvers when
-  lookups time out.
+  there). Hostnames are now resolved once, up front, on daemon threads that are abandoned
+  after 10 s without progress (`net.resolve_hosts`); unresolved names are dropped as `dns`.
+  Public resolvers (1.1.1.1, 8.8.8.8, 9.9.9.9) are asked first, because a home modem's
+  forwarder answered only ~25 names/s (25-40% resolved in 10 s, against 77% in 7 s publicly);
+  names they cannot resolve are retried through the system resolver. `v2rayChecker --dns ADDR`
+  picks a server (`--dns system` keeps the old behaviour), and a hint names the system
+  resolvers when lookups time out.
+- **The prefilter lost most live servers on lossy links.** Measured against servers known to
+  be live from an LTE home link: 86% still answered at 50 sockets in flight, 69% at 100, 49%
+  at 200, 32% at 500 and 8% at 2000 (the old default). The prefilter now compares the connect
+  rate of 300 servers at 50 sockets with 1200 at 1000 sockets and uses 50 sockets when the
+  link loses bursts, else 2000. `--prefilter-workers N` overrides it.
 - Hosts that are not IDNA-encodable (labels over 63 chars) no longer crash the prefilter.
 
 ### Changed
