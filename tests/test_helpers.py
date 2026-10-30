@@ -37,3 +37,12 @@ def test_tagChanger_replaces_tag(sample_ss_url):
     # tag is the part after '#' — body is allowed to be re-normalized
     assert new.endswith("#newtag")
     assert new.startswith("ss://")
+
+
+def test_format_geo_omits_what_is_unknown():
+    from proxyUtil.utils import format_geo
+
+    assert format_geo("1.2.3.4", "Germany", "DE") == "ip=1.2.3.4 @ DE (Germany)"
+    assert format_geo("1.2.3.4", None, "DE") == "ip=1.2.3.4 @ DE"  # trace endpoints give no name
+    assert format_geo("1.2.3.4", "Germany", None) == "ip=1.2.3.4 @ Germany"
+    assert format_geo("1.2.3.4", None, None) == "ip=1.2.3.4"

@@ -125,8 +125,9 @@ def is_truthy(value):
 
 
 def format_geo(ip, country, country_code):
-    label = f"{country_code} ({country})" if country_code else country
-    return f"ip={ip} @ {label}"
+    """`ip=1.2.3.4 @ DE (Germany)`; the name is missing when only a trace endpoint answered."""
+    label = f"{country_code} ({country})" if country_code and country else country_code or country
+    return f"ip={ip} @ {label}" if label else f"ip={ip}"
 
 
 def normalize_network(value, default="tcp"):

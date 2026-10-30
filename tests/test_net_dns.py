@@ -17,7 +17,7 @@ def test_resolve_hosts_returns_at_deadline_when_getaddrinfo_hangs(monkeypatch):
     out = net.resolve_hosts(["a.example", "b.example"], deadline=0.5, stats=stats)
     assert time.monotonic() - started < 3
     assert out == {"a.example": None, "b.example": None}
-    assert stats == {"lookups": 2, "failed": 2, "pending": 2}
+    assert stats == {"lookups": 2, "failed": 2, "pending": 2, "poisoned": 0}
     # the hung threads are daemons, so they can't keep the interpreter alive
     hung = [t for t in threading.enumerate() if t.name.startswith("resolve-")]
     assert hung and all(t.daemon for t in hung)
@@ -186,3 +186,17 @@ def test_auto_does_not_retry_names_the_public_resolver_says_do_not_exist(monkeyp
     monkeypatch.setattr(net.socket, "getaddrinfo", lambda host, *_a, **_k: asked.append(host))
     assert net.resolve_hosts(["gone.example"]) == {"gone.example": None}
     assert asked == []
+
+
+def test_nxdomain_is_not_asked_again_for_aaaa(monkeypatch):
+    asked = []
+
+    def fake_udp(req, where, timeout=None):
+        asked.append(req.question[0].rdtype)
+        res = net.dns.message.make_response(req)
+        res.set_rcode(net.dns.rcode.NXDOMAIN)
+        return res, False
+
+    monkeypatch.setattr(net.dns.query, "udp_with_fallback", fake_udp)
+    assert net._lookup_do53("gone.example", "203.0.113.1", 1.0) == []
+    assert asked == [net.dns.rdatatype.A]

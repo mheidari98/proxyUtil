@@ -151,11 +151,17 @@ def test_defaults_are_one_attempt_and_workers_from_the_link():
 
 
 @pytest.mark.parametrize(
-    ("ok_low", "ok_high", "narrow"),
-    [(150, 140, False), (150, 130, False), (150, 100, True), (150, 30, True), (0, 0, False)],
+    ("rate_low", "rate_high", "narrow"),
+    [
+        (0.5, 0.47, False),
+        (0.5, 0.43, False),
+        (0.5, 0.33, True),
+        (0.5, 0.1, True),
+        (0.0, 0.0, False),
+    ],
 )
-def test_link_is_narrow_compares_connect_rates(ok_low, ok_high, narrow):
-    assert pf.link_is_narrow(ok_low, 300, ok_high, 300) is narrow
+def test_link_is_narrow_compares_connect_rates(rate_low, rate_high, narrow):
+    assert pf.link_is_narrow(rate_low, rate_high) is narrow
 
 
 def test_pick_workers_is_narrow_without_enough_endpoints_to_calibrate():

@@ -24,6 +24,7 @@ from pathlib import Path
 import dns.exception
 import dns.message
 import dns.query
+import dns.rcode
 import requests
 
 from .os_glue import chmodX, get_arch, get_OS
@@ -94,6 +95,8 @@ def _lookup_do53(host: str, server: str, timeout: float) -> list[str] | None:
         ]
         if addrs:
             return _v4_first(addrs)
+        if res.rcode() == dns.rcode.NXDOMAIN:
+            break  # the name does not exist: an AAAA query would only double the load
     return []
 
 
@@ -141,19 +144,21 @@ def _public_lookup(timeout: float):
     resolver answered. Private answers (Iran injects 10.10.34.x for filtered names whatever
     server the packet is sent to) count as unusable and are collected in *poisoned*.
     Gives up (instantly None) once 20 queries in a row went unanswered, i.e. UDP to public
-    resolvers is blocked here, so the system resolver gets the time instead."""
+    resolvers is blocked here, so the system resolver gets the time instead.
+    "Unusable" is `not ip.is_global`, deliberately broader than `dnsUtil.FILTER_CIDRs`
+    (10.10.34.0/24): the injected address has changed before, and no proxy lives at a private one."""
     poisoned: set[str] = set()
-    silent = ok = 0
+    silent = 0  # consecutive unanswered queries
 
     def lookup(name: str) -> list[str] | None:
-        nonlocal silent, ok
-        if silent >= 20 and not ok:
+        nonlocal silent
+        if silent >= 20:
             return None
         found = _lookup_do53(name, AUTO_RESOLVERS[hash(name) % len(AUTO_RESOLVERS)], timeout)
         if found is None:
             silent += 1
             return None
-        ok += 1
+        silent = 0
         usable = [addr for addr in found if (ip := ip_literal(addr)) and ip.is_global]
         if found and not usable:
             poisoned.add(name)
@@ -184,7 +189,7 @@ def resolve_hosts(
     UDP to a resolver managed ~135 names/s, getaddrinfo 8), then asks the system resolver, a
     few at a time, about the names no public resolver answered for. Names that resolve only to
     private addresses (DNS filtering) are failures. *stats*, if given, receives `lookups`,
-    `failed` and `pending` counts, plus `poisoned` in auto mode."""
+    `failed`, `pending` and `poisoned` counts."""
     out: dict[str, list[str] | None] = {}
     names: list[str] = []
     for host in dict.fromkeys(hosts):
@@ -194,7 +199,7 @@ def resolve_hosts(
 
     query_timeout = max(0.1, min(3.0, deadline))
     pending = 0
-    extra: dict[str, int] = {}
+    poisoned: set[str] = set()
     if dns_server not in (None, SYSTEM_RESOLVER):
         found, pending = _run_lookups(
             names,
@@ -218,7 +223,7 @@ def resolve_hosts(
         out.update({name: ips for name, ips in found.items() if ips})
         for name in names:
             out[name] = out[name] or None
-        extra["poisoned"] = len(poisoned)
+
     else:
         found, pending = _run_lookups(names, _lookup_system, workers, deadline, max_wait, cancel)
         out.update(found)
@@ -228,7 +233,7 @@ def resolve_hosts(
             lookups=len(names),
             failed=sum(1 for n in names if out[n] is None),
             pending=pending,
-            **extra,
+            poisoned=len(poisoned),
         )
     return out
 

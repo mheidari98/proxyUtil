@@ -40,7 +40,8 @@ UDP_TRANSPORTS = frozenset({"kcp", "mkcp", "quic"})
 WIDE_WORKERS = 2000
 NARROW_WORKERS = 50
 _LOW_SAMPLE = 300  # endpoints probed at NARROW_WORKERS sockets
-_HIGH_SAMPLE = 1200  # probed at 1000 sockets: a burst smaller than ~500 is not lost even on LTE
+_HIGH_SAMPLE = 1200  # probed at _HIGH_SOCKETS: a burst smaller than ~500 is not lost on LTE
+_HIGH_SOCKETS = 1000
 
 
 def server_endpoint(url: str) -> tuple[str, int] | None:
@@ -112,39 +113,37 @@ def _tcp_ok(host: str, port: int, timeout: float, attempts: int) -> bool:
     return False
 
 
-def link_is_narrow(ok_low: int, n_low: int, ok_high: int, n_high: int) -> bool:
+def link_is_narrow(rate_low: float, rate_high: float) -> bool:
     """True when many sockets at once connect clearly less often than few (lossy access link).
 
     Measured from an LTE home link: 86% of live servers still answered at 50 sockets, 49% at
     200 and 8% at 2000; on an office line the rate does not depend on the socket count."""
-    if not (n_low and n_high and ok_low):
-        return False
-    return ok_high / n_high < 0.85 * (ok_low / n_low)
+    return rate_low > 0 and rate_high < 0.85 * rate_low
 
 
 def pick_workers(
     probes: list[tuple[str, int]], timeout: float, cancel: threading.Event | None = None
 ) -> int:
     """`WIDE_WORKERS` or `NARROW_WORKERS`, from the connect rate of two random samples of
-    *probes*: one at 50 sockets, one at 1000. Too few endpoints to calibrate: narrow (such a
+    *probes*: one at 50 sockets, one at 1000 (`_HIGH_SOCKETS`). Too few endpoints to calibrate: narrow (such a
     list is quick anyway, and a burst of a thousand is already enough to lose connects)."""
     if len(probes) < _LOW_SAMPLE + _HIGH_SAMPLE:
         return NARROW_WORKERS
 
-    def connected(sample, sockets):
+    def connect_rate(sample, sockets):
         def check(probe):
             return not (cancel and cancel.is_set()) and _tcp_ok(probe[0], probe[1], timeout, 1)
 
         with ThreadPoolExecutor(max_workers=sockets) as pool:
-            return sum(pool.map(check, sample))
+            return sum(pool.map(check, sample)) / len(sample)
 
     sample = random.sample(probes, _LOW_SAMPLE + _HIGH_SAMPLE)
-    low, high = sample[:_LOW_SAMPLE], sample[_LOW_SAMPLE:]
-    ok_low, ok_high = connected(low, NARROW_WORKERS), connected(high, 1000)
-    narrow = link_is_narrow(ok_low, len(low), ok_high, len(high))
+    rate_low = connect_rate(sample[:_LOW_SAMPLE], NARROW_WORKERS)
+    rate_high = connect_rate(sample[_LOW_SAMPLE:], _HIGH_SOCKETS)
+    narrow = link_is_narrow(rate_low, rate_high)
     logging.info(
-        f"link: {'narrow' if narrow else 'wide'} (connect rate {ok_low / len(low):.0%} at "
-        f"{NARROW_WORKERS} sockets, {ok_high / len(high):.0%} at 1000)"
+        f"link: {'narrow' if narrow else 'wide'} (connect rate {rate_low:.0%} at "
+        f"{NARROW_WORKERS} sockets, {rate_high:.0%} at {_HIGH_SOCKETS})"
     )
     return NARROW_WORKERS if narrow else WIDE_WORKERS
 
