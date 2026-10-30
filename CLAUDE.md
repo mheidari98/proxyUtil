@@ -31,7 +31,10 @@ proxyUtil/
                      ScrapURLs, downloadZray, downloadSingBox, getIPnCountry,
                      is_alive). Anything that touches live HTTP lives here.
   runner.py          CoreProcess (spawn, wait_ready on all ports, reap), registry + kill_all.
-  prefilter.py       TCP-connect pre-filter (server_endpoint, needs_tcp_check, prefilter).
+  prefilter.py       TCP-connect pre-filter (server_endpoint, needs_tcp_check, prefilter); DNS is
+                     bounded via net.resolve_hosts (daemon threads, deadline).
+  health.py          Collector-side gentle filter: TCP/DNS check with a 3-strike memory, skipped
+                     when the runner is offline. Used by the `.proxy` crawler.
   batch.py           Validate a multi-proxy core config with the core's own checker + bisect.
   geo.py             flag(), lookup_exit() via cdn-cgi/trace (+ip-api fallback).
   speedtest.py       measure_latency / measure_download / measure_upload via local SOCKS.

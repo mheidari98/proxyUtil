@@ -18,6 +18,8 @@
   `alpn`, `insecure`) are ignored. On the 38.6k-entry free list this leaves 23.4k unique
   configs instead of 38.6k. `.state` journals from earlier versions no longer match and are
   simply re-tested.
+- New `proxyUtil.health`: the `.proxy` collector's reachability filter (drop after 3 straight
+  failures if it was listed before, at once if it was not; skips itself if the runner is offline).
 - New `invalid_reason` / `reject_invalid`: configs that cannot work by structure alone
   (bad port, private/reserved IP, bad host, empty credential, broken vmess base64).
 
