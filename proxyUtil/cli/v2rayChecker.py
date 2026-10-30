@@ -800,16 +800,17 @@ def _screen(
 
 
 def _dns_hint(stats: dict[str, int], dns_server: str | None) -> None:
-    """One line pointing at the resolver when many lookups failed or hit the deadline."""
-    lookups, failed, pending = (stats.get(k, 0) for k in ("lookups", "failed", "pending"))
-    if not lookups or not (pending or failed > lookups // 10):
-        return
-    via = dns_server or ", ".join(system_resolvers()) or "the system resolver"
-    what = f"{failed} of {lookups} lookups failed" + (f" ({pending} timed out)" if pending else "")
-    logging.warning(
-        f"DNS: {what} via {via}; try `dnsChecker --do53` to pick a resolver, "
-        "then `--dns <ip>` or set it in your router/OS"
-    )
+    """Log DNS filtering (private answers) and, if lookups timed out, point at the resolver."""
+    if poisoned := stats.get("poisoned", 0):
+        logging.info(
+            f"DNS: {poisoned} hostnames resolve to private addresses (DNS filtering): dropped"
+        )
+    if pending := stats.get("pending", 0):
+        via = dns_server or ", ".join(system_resolvers()) or "the system resolver"
+        logging.warning(
+            f"DNS: {pending} of {stats.get('lookups', 0)} lookups timed out via {via}; "
+            "try `dnsChecker --do53` to pick a resolver, then `--dns <ip>`"
+        )
 
 
 def _with_core(url: str, cfg: CheckerCfg, port: int, fn):

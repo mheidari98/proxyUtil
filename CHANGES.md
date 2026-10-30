@@ -9,7 +9,9 @@
   after 10 s without progress (`net.resolve_hosts`); unresolved names are dropped as `dns`.
   Public resolvers (1.1.1.1, 8.8.8.8, 9.9.9.9) are asked first, because a home modem's
   forwarder answered only ~25 names/s (25-40% resolved in 10 s, against 77% in 7 s publicly);
-  names they cannot resolve are retried through the system resolver. `v2rayChecker --dns ADDR`
+  names no public resolver answered for are retried through the system resolver. Answers in
+  private ranges (Iran injects `10.10.34.x` for filtered names, from any UDP/53 destination)
+  are treated as failures and logged as DNS filtering. `v2rayChecker --dns ADDR`
   picks a server (`--dns system` keeps the old behaviour), and a hint names the system
   resolvers when lookups time out.
 - **The prefilter lost most live servers on lossy links.** Measured against servers known to

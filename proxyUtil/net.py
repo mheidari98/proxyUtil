@@ -135,10 +135,14 @@ def _run_lookups(names, lookup, workers, stall, max_wait, cancel):
 
 
 def _public_lookup(timeout: float):
-    """Lookup through AUTO_RESOLVERS; None for a name that gets no address from them.
+    """`(lookup, poisoned)`: lookup through AUTO_RESOLVERS.
 
+    A name maps to `[]` when a resolver answered without a usable address, and to None when no
+    resolver answered. Private answers (Iran injects 10.10.34.x for filtered names whatever
+    server the packet is sent to) count as unusable and are collected in *poisoned*.
     Gives up (instantly None) once 20 queries in a row went unanswered, i.e. UDP to public
     resolvers is blocked here, so the system resolver gets the time instead."""
+    poisoned: set[str] = set()
     silent = ok = 0
 
     def lookup(name: str) -> list[str] | None:
@@ -148,11 +152,14 @@ def _public_lookup(timeout: float):
         found = _lookup_do53(name, AUTO_RESOLVERS[hash(name) % len(AUTO_RESOLVERS)], timeout)
         if found is None:
             silent += 1
-        else:
-            ok += 1
-        return found or None
+            return None
+        ok += 1
+        usable = [addr for addr in found if (ip := ip_literal(addr)) and ip.is_global]
+        if found and not usable:
+            poisoned.add(name)
+        return usable
 
-    return lookup
+    return lookup, poisoned
 
 
 def resolve_hosts(
@@ -173,10 +180,11 @@ def resolve_hosts(
     Failed and still-pending names map to None. IP literals map to themselves.
 
     *dns_server* picks the resolver: an address (Do53 via dnspython, bounded per-query
-    timeout), `"system"`, or None for auto. Auto asks public resolvers first, since a home
-    modem's forwarder answers ~25 names/s, then asks the system resolver (few at a time) about
-    the names they could not resolve: some only resolve from inside Iran.
-    *stats*, if given, receives `lookups`, `failed` and `pending` counts."""
+    timeout), `"system"`, or None for auto. Auto asks public resolvers first (on a home link
+    UDP to a resolver managed ~135 names/s, getaddrinfo 8), then asks the system resolver, a
+    few at a time, about the names no public resolver answered for. Names that resolve only to
+    private addresses (DNS filtering) are failures. *stats*, if given, receives `lookups`,
+    `failed` and `pending` counts, plus `poisoned` in auto mode."""
     out: dict[str, list[str] | None] = {}
     names: list[str] = []
     for host in dict.fromkeys(hosts):
@@ -186,6 +194,7 @@ def resolve_hosts(
 
     query_timeout = max(0.1, min(3.0, deadline))
     pending = 0
+    extra: dict[str, int] = {}
     if dns_server not in (None, SYSTEM_RESOLVER):
         found, pending = _run_lookups(
             names,
@@ -197,15 +206,19 @@ def resolve_hosts(
         )
         out.update(found)
     elif dns_server is None and AUTO_RESOLVERS:
-        found, _ = _run_lookups(
-            names, _public_lookup(query_timeout), workers, deadline, max_wait, cancel
-        )
+        lookup, poisoned = _public_lookup(query_timeout)
+        found, _ = _run_lookups(names, lookup, workers, deadline, max_wait, cancel)
         out.update(found)
+        # Only names no public resolver answered for: when one answered "nothing", the system
+        # resolver agrees 99% of the time (1 of 120 measured) and is ~15x slower.
         retry = [name for name in names if out[name] is None]
         found, pending = _run_lookups(
             retry, _lookup_system, min(workers, 50), deadline, max_wait, cancel
         )
         out.update({name: ips for name, ips in found.items() if ips})
+        for name in names:
+            out[name] = out[name] or None
+        extra["poisoned"] = len(poisoned)
     else:
         found, pending = _run_lookups(names, _lookup_system, workers, deadline, max_wait, cancel)
         out.update(found)
@@ -215,6 +228,7 @@ def resolve_hosts(
             lookups=len(names),
             failed=sum(1 for n in names if out[n] is None),
             pending=pending,
+            **extra,
         )
     return out
 
