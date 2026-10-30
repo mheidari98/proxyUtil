@@ -217,7 +217,7 @@ def test_dedupe_keeps_first_of_each_identity():
         (f"vless://{UUID}@0.0.0.0:443", "host"),
         (f"vless://{UUID}@[::]:443", "host"),
         (f"vless://{UUID}@printer.local:443", "host"),
-        (f"vless://{UUID}@a.example.com:443", "host"),
+        (f"vless://{UUID}@a.example:443", "host"),
         (f"vless://{UUID}@x.invalid:443", "host"),
         (f"vless://{UUID}@7nXKCe_VLESS:443", "host"),
         (f"vless://{UUID}@127.0.0.1:443", "private-ip"),

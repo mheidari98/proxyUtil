@@ -401,14 +401,13 @@ _FALSY = frozenset({"0", "false", "no", "off"})
 _SS_PLUGIN_ALIASES = {"simple-obfs": "obfs-local"}
 
 _ZERO_UUID_CHARS = frozenset("0-")
-_BAD_HOSTS = frozenset({"localhost", "0.0.0.0", "::", "example.com", "example.net", "example.org"})
+_BAD_HOSTS = frozenset({"localhost", "0.0.0.0", "::"})
 _BAD_HOST_SUFFIXES = (
     ".local",
     ".invalid",
     ".test",
     ".example",
     ".localhost",
-    *(f".{h}" for h in ("example.com", "example.net", "example.org")),
 )
 
 
