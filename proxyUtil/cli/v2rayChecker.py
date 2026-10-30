@@ -31,6 +31,7 @@ from proxyUtil._common import (
 )
 from proxyUtil.geo import flag, lookup_exit
 from proxyUtil.logFormatter import CustomFormatter
+from proxyUtil.net import system_resolvers
 from proxyUtil.parsers import dedupe_proxies, parseContent, proxy_identity, proxy_name
 from proxyUtil.prefilter import prefilter
 from proxyUtil.probe import probe_liveness, probe_stable, socks_proxies
@@ -399,6 +400,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
     )
     parser.add_argument(
+        "--dns",
+        metavar="ADDR",
+        help="resolve server hostnames through this DNS server (UDP/TCP 53) instead of the "
+        "system resolver",
+    )
+    parser.add_argument(
         "--no-batch",
         help="one core process per proxy instead of many proxies per process "
         "(slower, ~35 MB per concurrent probe)",
@@ -759,21 +766,42 @@ def _screen(
         return candidates
 
     started = time.monotonic()
+    reasons: dict[str, str] = {}
+    dns_stats: dict[str, int] = {}
     kept, dropped = prefilter(
         candidates,
         timeout=args.prefilter_timeout,
         attempts=args.prefilter_attempts,
         cancel=cfg.cancel,
+        dns_server=args.dns,
+        reasons=reasons,
+        dns_stats=dns_stats,
     )
     if cfg.cancel.is_set():
         return kept  # interrupted: don't record verdicts for a pass that was cut short
     for url in dropped:
-        settle(Result(url, "unreachable", error="TCP connect failed"))
+        why = "DNS lookup failed" if reasons.get(url) == "dns" else "TCP connect failed"
+        settle(Result(url, "unreachable", error=why))
+    by_reason = Counter(reasons.values())
     logging.info(
         f"prefilter: {len(dropped)} of {len(candidates)} unreachable "
-        f"({time.monotonic() - started:.1f}s)"
+        f"(dns {by_reason['dns']}, tcp {by_reason['tcp']}) ({time.monotonic() - started:.1f}s)"
     )
+    _dns_hint(dns_stats, args.dns)
     return kept
+
+
+def _dns_hint(stats: dict[str, int], dns_server: str | None) -> None:
+    """One line pointing at the resolver when many lookups failed or hit the deadline."""
+    lookups, failed, pending = (stats.get(k, 0) for k in ("lookups", "failed", "pending"))
+    if not lookups or not (pending or failed > lookups // 10):
+        return
+    via = dns_server or ", ".join(system_resolvers()) or "the system resolver"
+    what = f"{failed} of {lookups} lookups failed" + (f" ({pending} timed out)" if pending else "")
+    logging.warning(
+        f"DNS: {what} via {via}; try `dnsChecker --do53` to pick a resolver, "
+        "then `--dns <ip>` or set it in your router/OS"
+    )
 
 
 def _with_core(url: str, cfg: CheckerCfg, port: int, fn):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import hashlib
+import ipaddress
 import json
 import re
 import uuid
@@ -18,6 +19,7 @@ __all__ = [
     "format_geo",
     "generate_uuid",
     "getSHA256",
+    "ip_literal",
     "isBase64",
     "is_json",
     "is_truthy",
@@ -108,6 +110,14 @@ def silentremove(filename):
 
 def split_csv(value):
     return [a for a in value.split(",") if a] if value else []
+
+
+def ip_literal(host):
+    """The ``ipaddress`` object if *host* is an IP literal (brackets tolerated), else None."""
+    try:
+        return ipaddress.ip_address(str(host).strip().strip("[]"))
+    except ValueError:
+        return None
 
 
 def is_truthy(value):

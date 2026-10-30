@@ -1,5 +1,26 @@
 # Changes
 
+## Unreleased
+
+### Fixes
+- **The TCP prefilter could hang for ~20 minutes.** One `getaddrinfo` that fell back to TCP
+  has no read timeout, and the thread pool waited for it (a real run spent 1072 s of 1229 s
+  there). Hostnames are now resolved once, up front, on daemon threads with a 10 s deadline
+  (`net.resolve_hosts`); unresolved names are dropped as `dns`. New `v2rayChecker --dns ADDR`
+  resolves through a Do53 server of your choice, and a hint names the system resolvers when
+  lookups time out.
+- Hosts that are not IDNA-encodable (labels over 63 chars) no longer crash the prefilter.
+
+### Changed
+- **`proxy_identity` is normalized and versioned (`id1:`).** Fragment/`ps`, scheme and
+  parameter aliases (`hy2`, `peer`), parameter order, percent-encoding, default values, vmess
+  JSON types and base64 variants no longer split a config in two; client-side knobs (`fp`,
+  `alpn`, `insecure`) are ignored. On the 38.6k-entry free list this leaves 23.4k unique
+  configs instead of 38.6k. `.state` journals from earlier versions no longer match and are
+  simply re-tested.
+- New `invalid_reason` / `reject_invalid`: configs that cannot work by structure alone
+  (bad port, private/reserved IP, bad host, empty credential, broken vmess base64).
+
 ## 0.5.0 — v2rayChecker overhaul
 
 Measured on the 13,813-proxy bench dump (live counts there are stale; timings are real):

@@ -10,6 +10,7 @@ import pytest
 from proxyUtil import probe
 from proxyUtil.cli import v2rayChecker as vc
 from proxyUtil.geo import ExitInfo
+from proxyUtil.parsers import proxy_identity
 from proxyUtil.probe import ProbeResult
 from proxyUtil.results import (
     Journal,
@@ -249,7 +250,7 @@ def test_journal_roundtrip_with_torn_last_line(tmp_path):
     path.write_text(path.read_text() + '{"id": "torn", "stat')  # crash mid-write
 
     tested, restored = Journal(str(path)).load()
-    assert tested == {"ss://a@h:1", "ss://b@h:1"}
+    assert tested == {proxy_identity("ss://a@h:1"), proxy_identity("ss://b@h:1")}
     assert [(r.url, r.latency_ms, r.country_code) for r in restored] == [("ss://a@h:1#x", 11, "DE")]
 
 

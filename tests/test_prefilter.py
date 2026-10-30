@@ -148,3 +148,9 @@ def test_defaults_are_one_attempt_and_2000_sockets():
 
     sig = inspect.signature(pf.prefilter).parameters
     assert sig["attempts"].default == 1 and sig["workers"].default == 2000
+
+
+@pytest.mark.parametrize("host", ["a" * 70 + ".example.com", "a..example.com"])
+def test_undialable_hostname_is_dead_not_a_crash(host):
+    """getaddrinfo raises UnicodeError (not OSError) for idna-invalid labels."""
+    assert pf._tcp_ok(host, 443, 0.1, 1) is False

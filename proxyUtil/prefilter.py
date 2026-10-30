@@ -15,6 +15,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qs, urlparse
 
+from .net import resolve_hosts
 from .parsers import parse_ss_withPlugin, parse_ssr
 from .utils import base64Decode, normalize_network
 
@@ -93,7 +94,7 @@ def _tcp_ok(host: str, port: int, timeout: float, attempts: int) -> bool:
                 return True
         except TimeoutError:
             continue
-        except OSError:
+        except (OSError, UnicodeError):  # UnicodeError: host not idna-encodable (label >63 chars)
             return False
     return False
 
@@ -105,35 +106,68 @@ def prefilter(
     timeout: float = 2.0,
     attempts: int = 1,
     cancel: threading.Event | None = None,
+    dns_deadline: float = 10.0,
+    dns_server: str | None = None,
+    reasons: dict[str, str] | None = None,
+    dns_stats: dict[str, int] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Split *urls* into `(kept, dropped)`; order is preserved.
+
+    Hostnames are resolved up front, once each, under *dns_deadline* (see `resolve_hosts`),
+    so a hung lookup can't stall the run; the connect then goes to the resolved IP. A config
+    whose host did not resolve is dropped. If given, *reasons* is filled with
+    `url -> "dns" | "tcp"` for every dropped url and *dns_stats* with the lookup counts.
 
     Measured on 13.8k real configs: a second attempt on timeouts costs ~25 s and recovers
     nothing beyond run-to-run noise, so one attempt is the default.
 
-    Configs sharing a server:port are probed once. Anything we cannot judge (UDP,
+    Configs sharing an ip:port are probed once. Anything we cannot judge (UDP,
     unparsable endpoint) is kept."""
     endpoints: dict[str, tuple[str, int] | None] = {
         url: server_endpoint(url) if needs_tcp_check(url) else None for url in urls
     }
-    unique = sorted({ep for ep in endpoints.values() if ep})
-    if not unique:
+    hosts = sorted({ep[0] for ep in endpoints.values() if ep})
+    if not hosts:
         return list(urls), []
 
-    workers = max_workers_for_fds(min(workers, len(unique)))
-    if workers < min(2000, len(unique)):
-        logging.warning(f"prefilter limited to {workers} sockets by the open-file limit")
+    resolved = resolve_hosts(
+        hosts, deadline=dns_deadline, dns_server=dns_server, cancel=cancel, stats=dns_stats
+    )
+    if cancel is not None and cancel.is_set():
+        return list(urls), []  # shutting down: don't claim anything is dead
 
-    def check(ep):
-        if cancel is not None and cancel.is_set():
-            return True  # shutting down: don't claim anything is dead
-        return _tcp_ok(ep[0], ep[1], timeout, attempts)
+    # first address only: resolve_hosts lists IPv4 before IPv6
+    probes: dict[str, tuple[str, int] | None] = {
+        url: (ips[0], ep[1]) if ep and (ips := resolved[ep[0]]) else None
+        for url, ep in endpoints.items()
+    }
+    unique = sorted({probe for probe in probes.values() if probe})
+    alive: dict[tuple[str, int], bool] = {}
+    if unique:
+        workers = max_workers_for_fds(min(workers, len(unique)))
+        if workers < min(2000, len(unique)):
+            logging.warning(f"prefilter limited to {workers} sockets by the open-file limit")
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        alive = dict(zip(unique, pool.map(check, unique), strict=True))
+        def check(probe):
+            if cancel is not None and cancel.is_set():
+                return True  # shutting down: don't claim anything is dead
+            return _tcp_ok(probe[0], probe[1], timeout, attempts)
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            alive = dict(zip(unique, pool.map(check, unique), strict=True))
 
     kept, dropped = [], []
     for url in urls:
-        ep = endpoints[url]
-        (kept if ep is None or alive[ep] else dropped).append(url)
+        if endpoints[url] is None:
+            kept.append(url)
+        elif (probe := probes[url]) is None:
+            dropped.append(url)
+            if reasons is not None:
+                reasons[url] = "dns"
+        elif alive[probe]:
+            kept.append(url)
+        else:
+            dropped.append(url)
+            if reasons is not None:
+                reasons[url] = "tcp"
     return kept, dropped
