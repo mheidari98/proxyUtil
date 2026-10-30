@@ -1,0 +1,122 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "proxyUtil"
+dynamic = ["version"]
+description = "CLI suite for shadowsocks / v2ray / vmess / vless / trojan and DNS utilities"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Mahdi Heidari", email = "mahdih3idari@gmail.com" }]
+keywords = ["proxy", "shadowsocks", "v2ray", "vmess", "vless", "trojan", "clash", "dns", "doh", "dot"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: Proxy Servers",
+    "Topic :: System :: Networking",
+]
+dependencies = [
+    "requests[socks]>=2.32",
+    "urllib3>=2.2",
+    "ruamel.yaml>=0.18",
+    "rich>=13.7",
+    "cloudflare>=3",
+    "beautifulsoup4>=4.12",
+    "dnspython>=2.6",
+    "psutil>=5.9.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "basedpyright>=1.18",
+    "pre-commit>=3.7",
+    "build>=1.2",
+    "twine>=5",
+]
+
+[project.scripts]
+cdnGen        = "proxyUtil.cli.cdnGen:main"
+dnsChecker    = "proxyUtil.cli.dnsChecker:main"
+cfRecorder    = "proxyUtil.cli.cfRecorder:main"
+ipExtractor   = "proxyUtil.cli.ipExtractor:main"
+v2rayChecker  = "proxyUtil.cli.v2rayChecker:main"
+clashGen      = "proxyUtil.cli.clashGen:main"
+connectMe     = "proxyUtil.cli.connectMe:main"
+shadowChecker = "proxyUtil.cli.shadowChecker:main"
+sslocal2ssURI = "proxyUtil.cli.sslocal2ssURI:main"
+ssURI2sslocal = "proxyUtil.cli.ssURI2sslocal:main"
+
+[project.urls]
+Homepage = "https://github.com/mheidari98/proxyUtil"
+Issues   = "https://github.com/mheidari98/proxyUtil/issues"
+Source   = "https://github.com/mheidari98/proxyUtil"
+
+[tool.hatch.version]
+path = "proxyUtil/__version__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["proxyUtil"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "proxyUtil",
+    "tests",
+    "README.md",
+    "LICENSE",
+    "CHANGES.md",
+    "CLAUDE.md",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "E501",   # line length already widened
+    "E741",   # ambiguous variable names (legacy code)
+    "B008",   # function calls in default args (argparse uses argv=sys.argv)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B", "SIM", "E402"]
+
+[tool.basedpyright]
+include = ["proxyUtil"]
+exclude = ["**/__pycache__", "build", "dist", ".venv"]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+# Pre-existing legacy patterns we are intentionally not chasing in this branch.
+reportOptionalMemberAccess        = false
+reportOptionalSubscript           = false
+reportAttributeAccessIssue        = false
+reportArgumentType                = false
+reportCallIssue                   = false
+reportOperatorIssue               = false
+reportPossiblyUnboundVariable     = false
+reportInvalidStringEscapeSequence = false
+reportAssignmentType              = false
+reportMissingImports              = false
+reportConstantRedefinition        = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "network: tests that require live network access",
+    "core: end-to-end tests that need real xray/v2ray/sing-box binaries (skipped if absent)",
+]
